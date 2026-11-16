@@ -7,3 +7,4 @@ ignore:
   - .gitattributes
   - .gitignore
   - README.md
+  - art

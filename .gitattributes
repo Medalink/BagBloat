@@ -2,3 +2,5 @@
 *.toc text eol=lf
 *.md text eol=lf
 *.yml text eol=lf
+*.tga binary
+*.png binary

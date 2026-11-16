@@ -4,7 +4,7 @@
 ## Author: Medalink
 ## Version: @project-version@
 ## SavedVariables: BagBloatDB
-## IconTexture: Interface\Icons\INV_Misc_Bag_08
+## IconTexture: Interface\AddOns\BagBloat\media\logo.tga
 ## AddonCompartmentFunc: BagBloat_OnAddonCompartmentClick
 
 Core.lua
