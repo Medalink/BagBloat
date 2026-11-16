@@ -90,7 +90,7 @@ local function FillRow(row, rec)
     local v = ns.VERDICTS[rec.verdict]
     row.status:SetText(v.label)
     row.status:SetTextColor(v.r, v.g, v.b)
-    row.quest:SetText(ns.QuestText(rec) or "")
+    row.quest:SetText(rec.questText or "")
 end
 
 function ns.RefreshWindow()

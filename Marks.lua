@@ -57,9 +57,13 @@ function ns.RepaintMarks()
     end
 end
 
-function ns.MarksVisible()
-    for btn, state in pairs(painted) do
-        if state.bag and btn:IsVisible() then return true end
+local gameFrames = {}
+
+function ns.BagsOpen()
+    local eui = _G.EUI_Bags
+    if eui and eui.RegisterItemOverlayIcon and eui:IsVisible() then return true end
+    for i = 1, #gameFrames do
+        if gameFrames[i]:IsShown() then return true end
     end
     return false
 end
@@ -80,12 +84,13 @@ local function PaintGameFrame(frame)
     end
 end
 
-local function GameBagFrames()
-    local frames, seen = {}, {}
+function ns.HookBags()
+    local seen = {}
     local function add(frame)
         if frame and not seen[frame] and frame.UpdateItems and frame.EnumerateValidItems then
             seen[frame] = true
-            frames[#frames + 1] = frame
+            gameFrames[#gameFrames + 1] = frame
+            hooksecurefunc(frame, "UpdateItems", PaintGameFrame)
         end
     end
     add(ContainerFrameCombinedBags)
@@ -94,13 +99,7 @@ local function GameBagFrames()
         for _, frame in ipairs(list) do add(frame) end
     end
     for i = 1, NUM_CONTAINER_FRAMES or 13 do add(_G["ContainerFrame" .. i]) end
-    return frames
-end
 
-function ns.HookBags()
-    for _, frame in ipairs(GameBagFrames()) do
-        hooksecurefunc(frame, "UpdateItems", PaintGameFrame)
-    end
     local eui = _G.EUI_Bags
     if eui and eui.RegisterItemOverlayIcon then
         eui.RegisterItemOverlayIcon("BagBloat", PaintEllesmere)

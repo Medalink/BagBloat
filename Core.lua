@@ -26,14 +26,19 @@ ns.VERDICTS = {
     pending = { order = 6, label = "Loading", tip = "Loading quest data.", r = 0.50, g = 0.50, b = 0.50 },
 }
 local VERDICTS = ns.VERDICTS
+for _, v in pairs(VERDICTS) do v.line = "Bag Bloat: " .. v.tip end
 
 local SLOT_KEY = 1000
 function ns.SlotKey(bag, slot) return bag * SLOT_KEY + slot end
 
-local records, byItem, bySlot = {}, {}, {}
-local logQuests, logObjectives, objectives, specialItems = {}, {}, {}, {}
+local records, byItem, bySlot, recPool = {}, {}, {}, {}
+local logQuests, logObjectives, objText, objQuest, specialItems = {}, {}, {}, {}, {}
 local questRequested, questResolved = {}, {}
-local dirty = true
+-- [itemID] = whether it can be a quest item at all; fixed per item, so most
+-- of your bag is skipped after one look.
+local relevant = {}
+local bagsDirty, questsDirty = true, true
+local scanCount, lastScanMs = 0, 0
 ns.safeCount = 0
 
 function ns.IsPlain(v)
@@ -41,7 +46,7 @@ function ns.IsPlain(v)
 end
 
 local function ReadQuestLog()
-    wipe(logQuests); wipe(logObjectives); wipe(objectives); wipe(specialItems)
+    wipe(logQuests); wipe(logObjectives); wipe(objText); wipe(objQuest); wipe(specialItems)
     local i = 1
     while true do
         local info = C_QuestLog.GetInfo(i)
@@ -54,7 +59,8 @@ local function ReadQuestLog()
                 logObjectives[questID] = objs
                 for _, o in ipairs(objs) do
                     if o.text and o.text ~= "" then
-                        objectives[#objectives + 1] = { questID = questID, text = o.text }
+                        local n = #objText + 1
+                        objText[n], objQuest[n] = o.text, questID
                     end
                 end
             end
@@ -88,8 +94,8 @@ end
 local function OwnerOfObjectiveItem(itemID, name)
     local owner = specialItems[itemID]
     if owner or not name or name == "" then return owner end
-    for i = 1, #objectives do
-        if find(objectives[i].text, name, 1, true) then return objectives[i].questID end
+    for i = 1, #objText do
+        if find(objText[i], name, 1, true) then return objQuest[i] end
     end
 end
 
@@ -123,6 +129,20 @@ local function Classify(bag, slot, info)
     return "orphan"
 end
 
+local function IsRelevant(bag, slot, itemID)
+    local known = relevant[itemID]
+    if known ~= nil then return known end
+    local qi = C_Container.GetContainerItemQuestInfo(bag, slot)
+    if qi and (qi.isQuestItem or (qi.questID and qi.questID > 0)) then
+        relevant[itemID] = true
+        return true
+    end
+    local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(itemID)
+    if classID == nil then return false end
+    relevant[itemID] = classID == QUEST_ITEM_CLASS
+    return relevant[itemID]
+end
+
 local function ByVerdict(a, b)
     local oa, ob = VERDICTS[a.verdict].order, VERDICTS[b.verdict].order
     if oa ~= ob then return oa < ob end
@@ -132,68 +152,77 @@ local function ByVerdict(a, b)
 end
 
 local function Scan()
-    dirty = false
-    ReadQuestLog()
+    local started = debugprofilestop()
+    if questsDirty then
+        questsDirty = false
+        ReadQuestLog()
+    end
+    bagsDirty = false
     wipe(records); wipe(byItem); wipe(bySlot)
-    local safe = 0
+    local n, safe = 0, 0
     for _, bag in ipairs(BAGS) do
         for slot = 1, C_Container.GetContainerNumSlots(bag) do
-            local info = C_Container.GetContainerItemInfo(bag, slot)
-            if info and info.itemID then
-                local verdict, questID = Classify(bag, slot, info)
-                if verdict then
-                    local inLog = questID and logQuests[questID] ~= nil
-                    local rec = {
-                        bag = bag, slot = slot, itemID = info.itemID,
-                        name = info.itemName or "", link = info.hyperlink,
-                        icon = info.iconFileID, count = info.stackCount, quality = info.quality,
-                        verdict = verdict, questID = questID,
-                        questTitle = questID and QuestTitle(questID),
-                        questLevel = questID and QuestLevel(questID),
-                        objectives = inLog and logObjectives[questID] or nil,
-                        ready = inLog and C_QuestLog.ReadyForTurnIn(questID) or nil,
-                    }
-                    records[#records + 1] = rec
-                    byItem[info.itemID] = byItem[info.itemID] or rec
-                    bySlot[ns.SlotKey(bag, slot)] = rec
-                    if VERDICTS[verdict].safe then safe = safe + 1 end
+            local itemID = C_Container.GetContainerItemID(bag, slot)
+            local info = itemID and IsRelevant(bag, slot, itemID) and C_Container.GetContainerItemInfo(bag, slot)
+            local verdict, questID
+            if info then verdict, questID = Classify(bag, slot, info) end
+            if verdict then
+                n = n + 1
+                local rec = recPool[n]
+                if not rec then
+                    rec = {}
+                    recPool[n] = rec
                 end
+                local inLog = questID and logQuests[questID] ~= nil
+                local level = questID and QuestLevel(questID)
+                local title = questID and QuestTitle(questID)
+                rec.bag, rec.slot, rec.itemID = bag, slot, itemID
+                rec.name, rec.link = info.itemName or "", info.hyperlink
+                rec.icon, rec.count, rec.quality = info.iconFileID, info.stackCount, info.quality
+                rec.verdict, rec.questID, rec.questLevel, rec.questTitle = verdict, questID, level, title
+                rec.questText = title and (level and "[" .. level .. "] " .. title or title) or nil
+                rec.objectives = inLog and logObjectives[questID] or nil
+                rec.ready = inLog and C_QuestLog.ReadyForTurnIn(questID) or nil
+                records[n] = rec
+                byItem[itemID] = byItem[itemID] or rec
+                bySlot[ns.SlotKey(bag, slot)] = rec
+                if VERDICTS[verdict].safe then safe = safe + 1 end
             end
         end
     end
     sort(records, ByVerdict)
     ns.safeCount = safe
+    scanCount = scanCount + 1
+    lastScanMs = debugprofilestop() - started
+    -- Records are reused tables: the window must never show an old row.
+    ns.RefreshWindow()
 end
 
 -- In combat this only hands back the last scan: nothing reads the game
 -- until combat ends.
 function ns.Get()
-    if dirty and not InCombatLockdown() then Scan() end
+    if (bagsDirty or questsDirty) and not InCombatLockdown() then Scan() end
     return records, byItem, bySlot
 end
 
 local refreshQueued = false
 local function RunRefresh()
     refreshQueued = false
-    if not dirty or InCombatLockdown() then return end
-    if not (ns.IsWindowShown() or ns.MarksVisible()) then return end
+    if not (bagsDirty or questsDirty) or InCombatLockdown() then return end
+    if not (ns.IsWindowShown() or ns.BagsOpen()) then return end
     Scan()
-    ns.RefreshWindow()
     ns.RepaintMarks()
 end
 
-function ns.MarkDirty()
-    dirty = true
+-- Bursts of bag and quest events collapse into one rescan, and only while
+-- the bags or the window are open; otherwise the next tooltip or open does it.
+function ns.MarkDirty(questsChanged)
+    bagsDirty = true
+    if questsChanged then questsDirty = true end
     if not refreshQueued then
         refreshQueued = true
-        C_Timer.After(0.2, RunRefresh)
+        C_Timer.After(0.25, RunRefresh)
     end
-end
-
-function ns.QuestText(rec)
-    if not rec.questTitle then return nil end
-    if rec.questLevel then return "[" .. rec.questLevel .. "] " .. rec.questTitle end
-    return rec.questTitle
 end
 
 local function AddDetailLines(tooltip, rec)
@@ -220,9 +249,8 @@ end
 local tipOwner
 function ns.AddVerdictLines(tooltip, rec)
     local v = VERDICTS[rec.verdict]
-    tooltip:AddLine("Bag Bloat: " .. v.tip, v.r, v.g, v.b, true)
-    local quest = ns.QuestText(rec)
-    if quest then tooltip:AddLine(quest, 0.85, 0.85, 0.85, true) end
+    tooltip:AddLine(v.line, v.r, v.g, v.b, true)
+    if rec.questText then tooltip:AddLine(rec.questText, 0.85, 0.85, 0.85, true) end
     if IsAltKeyDown() then AddDetailLines(tooltip, rec) end
     if tooltip == GameTooltip then tipOwner = tooltip:GetOwner() end
 end
@@ -260,13 +288,15 @@ local function OnAltChanged()
     end
 end
 
+local QUEST_EVENTS = { QUEST_LOG_UPDATE = true, QUEST_TURNED_IN = true }
+
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, arg1)
     if event == "MODIFIER_STATE_CHANGED" then
         if arg1 == "LALT" or arg1 == "RALT" then OnAltChanged() end
         return
     elseif event == "PLAYER_REGEN_ENABLED" then
-        if dirty then ns.MarkDirty() end
+        if bagsDirty or questsDirty then ns.MarkDirty() end
         return
     elseif event == "QUEST_DATA_LOAD_RESULT" then
         if not questRequested[arg1] then return end
@@ -279,7 +309,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
         ns.HookBags()
         return
     end
-    ns.MarkDirty()
+    ns.MarkDirty(QUEST_EVENTS[event])
 end)
 for _, event in ipairs({
     "PLAYER_LOGIN", "BAG_UPDATE_DELAYED", "QUEST_LOG_UPDATE", "QUEST_TURNED_IN",
@@ -288,9 +318,17 @@ for _, event in ipairs({
     events:RegisterEvent(event)
 end
 
+local function PrintStats()
+    UpdateAddOnMemoryUsage()
+    print(string.format("Bag Bloat: %.0f KB, %d quest items, %d scans, last scan %.2f ms",
+        GetAddOnMemoryUsage("BagBloat"), #records, scanCount, lastScanMs))
+end
+
 SLASH_BAGBLOAT1 = "/bagbloat"
 SLASH_BAGBLOAT2 = "/bloat"
-SlashCmdList.BAGBLOAT = function() ns.ToggleWindow() end
+SlashCmdList.BAGBLOAT = function(msg)
+    if msg and msg:lower():match("^%s*stats") then PrintStats() else ns.ToggleWindow() end
+end
 
 function BagBloat_OnAddonCompartmentClick()
     ns.ToggleWindow()
