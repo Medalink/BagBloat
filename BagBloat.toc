@@ -1,0 +1,11 @@
+## Interface: 16001
+## Title: Bag Bloat
+## Notes: Tells you which quest items in your bags are done, still needed, or safe to delete.
+## Author: Medalink
+## Version: @project-version@
+## SavedVariables: BagBloatDB
+## IconTexture: Interface\Icons\INV_Misc_Bag_08
+## AddonCompartmentFunc: BagBloat_OnAddonCompartmentClick
+
+Core.lua
+Window.lua

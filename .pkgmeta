@@ -1,0 +1,9 @@
+package-as: BagBloat
+
+enable-nolib-creation: no
+
+ignore:
+  - .github
+  - .gitattributes
+  - .gitignore
+  - README.md
