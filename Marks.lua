@@ -3,9 +3,9 @@ local _, ns = ...
 local C_Container = C_Container
 
 local MARK_TEXTURES = {
-    safe  = "Interface\\RaidFrame\\ReadyCheck-Ready",
-    check = "Interface\\RaidFrame\\ReadyCheck-Waiting",
-    keep  = "Interface\\RaidFrame\\ReadyCheck-NotReady",
+    check    = "Interface\\RaidFrame\\ReadyCheck-Ready",
+    x        = "Interface\\RaidFrame\\ReadyCheck-NotReady",
+    question = "Interface\\RaidFrame\\ReadyCheck-Waiting",
 }
 
 -- [button] = { host, bag, slot, itemID, tex }: every item button we have

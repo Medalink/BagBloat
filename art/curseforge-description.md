@@ -14,9 +14,9 @@ Each quest item gets one label. It shows in the item's tooltip, so it works with
 
 Each quest item also gets an icon in the corner of its bag slot. This works in the game's own bags and in EllesmereUI Bags.
 
-- **Green check.** Safe to delete (Quest done or Gray quest).
-- **Question mark.** No quest in log. Check before deleting.
-- **Red X.** Keep it (On quest or Starts a quest).
+- **Green check.** You have the quest or already completed it (On quest, Quest done).
+- **Red X.** You don't need it or the quest is gray (No quest in log, Gray quest).
+- **Question mark.** It starts a quest you have not picked up (Starts a quest).
 
 ## Quest details
 
