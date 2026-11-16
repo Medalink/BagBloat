@@ -8,6 +8,7 @@
 ## OptionalDeps: EllesmereUIBags
 ## AddonCompartmentFunc: BagBloat_OnAddonCompartmentClick
 ## X-Curse-Project-ID: 1809381
+## X-Wago-ID: ANz7W564
 
 Core.lua
 Marks.lua
