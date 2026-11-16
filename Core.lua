@@ -15,6 +15,21 @@ local BAGS = {
     BAG and BAG.Keyring or -1,
 }
 
+-- The bank's tabs, readable only while the bank is open.
+local BANK_BAGS, IS_BANK = {}, {}
+if BAG then
+    for _, prefix in ipairs({ "CharacterBankTab_", "AccountBankTab_" }) do
+        for i = 1, 12 do
+            local bag = BAG[prefix .. i]
+            if bag then
+                BANK_BAGS[#BANK_BAGS + 1] = bag
+                IS_BANK[bag] = true
+            end
+        end
+    end
+end
+ns.bankOpen = false
+
 -- order sorts the window: things you can delete first, things to keep last.
 -- mark picks the bag icon: check (have it or done it), x (gray or unused), question (not started).
 ns.VERDICTS = {
@@ -165,7 +180,9 @@ local function Scan()
     bagsDirty = false
     wipe(records); wipe(byItem); wipe(bySlot)
     local n, safe = 0, 0
-    for _, bag in ipairs(BAGS) do
+    local lastBag = #BAGS + (ns.bankOpen and #BANK_BAGS or 0)
+    for b = 1, lastBag do
+        local bag = BAGS[b] or BANK_BAGS[b - #BAGS]
         for slot = 1, C_Container.GetContainerNumSlots(bag) do
             local itemID = C_Container.GetContainerItemID(bag, slot)
             local info = itemID and IsRelevant(bag, slot, itemID) and C_Container.GetContainerItemInfo(bag, slot)
@@ -181,7 +198,7 @@ local function Scan()
                 local inLog = questID and logQuests[questID] ~= nil
                 local level = questID and QuestLevel(questID)
                 local title = questID and QuestTitle(questID)
-                rec.bag, rec.slot, rec.itemID = bag, slot, itemID
+                rec.bag, rec.slot, rec.itemID, rec.inBank = bag, slot, itemID, IS_BANK[bag] or nil
                 rec.name, rec.link = info.itemName or "", info.hyperlink
                 rec.icon, rec.count, rec.quality = info.iconFileID, info.stackCount, info.quality
                 rec.verdict, rec.questID, rec.questLevel, rec.questTitle = verdict, questID, level, title
@@ -300,6 +317,8 @@ events:SetScript("OnEvent", function(_, event, arg1)
     if event == "MODIFIER_STATE_CHANGED" then
         if arg1 == "LALT" or arg1 == "RALT" then OnAltChanged() end
         return
+    elseif event == "BANKFRAME_OPENED" or event == "BANKFRAME_CLOSED" then
+        ns.bankOpen = event == "BANKFRAME_OPENED"
     elseif event == "PLAYER_REGEN_ENABLED" then
         if bagsDirty or questsDirty then ns.MarkDirty() end
         return
@@ -319,6 +338,8 @@ end)
 for _, event in ipairs({
     "PLAYER_LOGIN", "BAG_UPDATE_DELAYED", "QUEST_LOG_UPDATE", "QUEST_TURNED_IN",
     "PLAYER_LEVEL_UP", "QUEST_DATA_LOAD_RESULT", "PLAYER_REGEN_ENABLED", "MODIFIER_STATE_CHANGED",
+    "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYERBANKSLOTS_CHANGED", "BANK_TABS_CHANGED",
+    "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED",
 }) do
     events:RegisterEvent(event)
 end

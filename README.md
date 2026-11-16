@@ -1,6 +1,6 @@
 # Bag Bloat
 
-Bag Bloat checks the quest items in your bags on WoW Forever and tells you which
+Bag Bloat checks the quest items in your bags and bank on WoW Forever and tells you which
 ones you can delete.
 
 Every quest item gets one of these labels, in its tooltip and in the Bag Bloat
@@ -17,7 +17,8 @@ window:
 In your bags, each quest item also gets a corner icon: a green check when you
 have the quest or already completed it, a red X when the quest is gray or no
 quest in your log uses it, and a question mark when it starts a quest you have not picked
-up. This works in the game's own bags and in EllesmereUI Bags.
+up. This works in the game's own bags and bank and in EllesmereUI
+Bags and its bank.
 
 Hold Alt while hovering a quest item for the quest ID, its status, your
 objective progress and the item ID.

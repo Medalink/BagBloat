@@ -49,10 +49,13 @@ local function Paint(btn, host, bag, slot, itemID)
     tex:Show()
 end
 
+-- Runs out of combat only, so it reads each slot's current item rather
+-- than trusting the one the button showed at its last paint.
 function ns.RepaintMarks()
     for btn, state in pairs(painted) do
         if state.bag and btn:IsVisible() then
-            Paint(btn, state.host, state.bag, state.slot, state.itemID)
+            local itemID = C_Container.GetContainerItemID(state.bag, state.slot)
+            Paint(btn, state.host, state.bag, state.slot, itemID or nil)
         end
     end
 end
@@ -62,6 +65,7 @@ local gameFrames = {}
 function ns.BagsOpen()
     local eui = _G.EUI_Bags
     if eui and eui.RegisterItemOverlayIcon and eui:IsVisible() then return true end
+    if ns.bankOpen then return true end
     for i = 1, #gameFrames do
         if gameFrames[i]:IsShown() then return true end
     end
@@ -84,7 +88,27 @@ local function PaintGameFrame(frame)
     end
 end
 
+-- The game's bank: one panel showing the selected tab's slots.
+local function PaintBankPanel(panel)
+    if not panel:IsVisible() then return end
+    for _, button in panel:EnumerateValidItems() do
+        local bag = button.GetBankTabID and button:GetBankTabID()
+        local slot = button.GetContainerSlotID and button:GetContainerSlotID()
+        local itemID = bag and slot and slot > 0 and C_Container.GetContainerItemID(bag, slot)
+        Paint(button, button, bag, slot, itemID or nil)
+    end
+end
+
+local function HookBankPanel()
+    local panel = _G.BankPanel
+    if not (panel and panel.EnumerateValidItems) then return end
+    for _, method in ipairs({ "GenerateItemSlotsForSelectedTab", "RefreshAllItemsForSelectedTab" }) do
+        if panel[method] then hooksecurefunc(panel, method, PaintBankPanel) end
+    end
+end
+
 function ns.HookBags()
+    HookBankPanel()
     local seen = {}
     local function add(frame)
         if frame and not seen[frame] and frame.UpdateItems and frame.EnumerateValidItems then

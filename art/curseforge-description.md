@@ -1,4 +1,4 @@
-Bag Bloat checks every quest item in your bags on WoW Forever and tells you whether you still need it.
+Bag Bloat checks every quest item in your bags and bank on WoW Forever and tells you whether you still need it.
 
 ## Labels
 
@@ -12,7 +12,7 @@ Each quest item gets one label. It shows in the item's tooltip, so it works with
 
 ## Bag icons
 
-Each quest item also gets an icon in the corner of its bag slot. This works in the game's own bags and in EllesmereUI Bags.
+Each quest item also gets an icon in the corner of its slot. This works in the game's own bags and bank and in EllesmereUI Bags and its bank.
 
 - **Green check.** You have the quest or already completed it (On quest, Quest done).
 - **Red X.** The quest is gray, or no quest in your log uses it (Gray quest, No quest in log). Check the second kind before deleting.
@@ -24,7 +24,7 @@ Hold Alt while hovering a quest item to see the quest ID, whether the quest is c
 
 ## The window
 
-Type `/bloat` or `/bagbloat`, or click Bag Bloat in the addon compartment by the minimap. The window lists your quest items with the ones you can delete at the top, and shows how many are safe to delete.
+Type `/bloat` or `/bagbloat`, or click Bag Bloat in the addon compartment by the minimap. The window lists your quest items with the ones you can delete at the top, and shows how many are safe to delete. While the bank is open it lists your bank's quest items too.
 
 - Click a row to pick the item up, then click outside your bags. The game asks you to confirm the delete.
 - Shift-click a row to link the item in chat.

@@ -84,7 +84,8 @@ local function FillRow(row, rec)
     row.rec = rec
     row.icon:SetTexture(rec.icon)
     row.count:SetText(rec.count and rec.count > 1 and rec.count or "")
-    row.name:SetText(rec.name ~= "" and rec.name or rec.link)
+    local name = rec.name ~= "" and rec.name or rec.link
+    row.name:SetText(rec.inBank and name .. " |cff808080(bank)|r" or name)
     local r, g, b = C_Item.GetItemQualityColor(rec.quality or 1)
     row.name:SetTextColor(r or 1, g or 1, b or 1)
     local v = ns.VERDICTS[rec.verdict]
