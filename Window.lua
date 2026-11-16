@@ -2,7 +2,7 @@ local _, ns = ...
 
 local WIDTH, HEIGHT, ROW_H, ICON = 380, 440, 36, 28
 local frame, content, summary, empty
-local rows = {}
+local rows, isRow = {}, {}
 
 local function SavePosition()
     local point, _, relPoint, x, y = frame:GetPoint(1)
@@ -20,7 +20,11 @@ local function RestorePosition()
     end
 end
 
-local function RowOnEnter(row)
+function ns.IsRow(frame)
+    return isRow[frame] == true
+end
+
+function ns.ShowRowTooltip(row)
     local rec = row.rec
     if not rec then return end
     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
@@ -41,6 +45,7 @@ local function CreateRow(index)
     row:SetHeight(ROW_H)
     row:SetPoint("TOPLEFT", 0, -(index - 1) * ROW_H)
     row:SetPoint("RIGHT")
+    isRow[row] = true
 
     local hl = row:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
@@ -69,7 +74,7 @@ local function CreateRow(index)
     row.quest:SetJustifyH("LEFT")
     row.quest:SetWordWrap(false)
 
-    row:SetScript("OnEnter", RowOnEnter)
+    row:SetScript("OnEnter", ns.ShowRowTooltip)
     row:SetScript("OnLeave", GameTooltip_Hide)
     row:SetScript("OnClick", RowOnClick)
     return row

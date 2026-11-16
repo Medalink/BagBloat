@@ -14,6 +14,14 @@ window:
 | Starts a quest | The item starts a quest you have not done and that still gives experience. |
 | On quest | A quest in your log needs the item. |
 
+In your bags, each quest item also gets a corner icon: a green check when it is
+safe to delete, a question mark when no quest in your log uses it, and a red X
+when you still need it. This works in the game's own bags and in EllesmereUI
+Bags.
+
+Hold Alt while hovering a quest item for the quest ID, its status, your
+objective progress and the item ID.
+
 Open the window with `/bloat`, `/bagbloat` or the addon compartment button next
 to the minimap. Click a row to pick the item up, then click outside your bags to
 delete it through the game's own confirmation. Shift-click a row to link the

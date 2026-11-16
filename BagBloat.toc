@@ -5,8 +5,10 @@
 ## Version: @project-version@
 ## SavedVariables: BagBloatDB
 ## IconTexture: Interface\AddOns\BagBloat\media\logo.tga
+## OptionalDeps: EllesmereUIBags
 ## AddonCompartmentFunc: BagBloat_OnAddonCompartmentClick
 ## X-Curse-Project-ID: 1809381
 
 Core.lua
+Marks.lua
 Window.lua
