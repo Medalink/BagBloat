@@ -138,9 +138,14 @@ local function IsRelevant(bag, slot, itemID)
         return true
     end
     local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(itemID)
-    if classID == nil then return false end
-    relevant[itemID] = classID == QUEST_ITEM_CLASS
-    return relevant[itemID]
+    if classID == QUEST_ITEM_CLASS then
+        relevant[itemID] = true
+        return true
+    end
+    -- A "no" is only final once the item has loaded: before that the quest
+    -- info can be empty for an item that does start a quest.
+    if classID ~= nil and C_Item.GetItemNameByID(itemID) then relevant[itemID] = false end
+    return false
 end
 
 local function ByVerdict(a, b)

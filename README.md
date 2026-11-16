@@ -15,8 +15,8 @@ window:
 | On quest | A quest in your log needs the item. |
 
 In your bags, each quest item also gets a corner icon: a green check when you
-have the quest or already completed it, a red X when you don't need it or the
-quest is gray, and a question mark when it starts a quest you have not picked
+have the quest or already completed it, a red X when the quest is gray or no
+quest in your log uses it, and a question mark when it starts a quest you have not picked
 up. This works in the game's own bags and in EllesmereUI Bags.
 
 Hold Alt while hovering a quest item for the quest ID, its status, your
