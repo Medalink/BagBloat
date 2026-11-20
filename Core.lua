@@ -121,13 +121,16 @@ local function Classify(bag, slot, info)
         if qi.isActive or logQuests[questID] or C_QuestLog.IsOnQuest(questID) then
             return "active", questID
         end
-        local completed = C_QuestLog.IsQuestFlaggedCompleted(questID)
-        -- A quest with no title is a hidden one, never shown to the player.
-        local title = completed and QuestTitle(questID)
-        if title and title ~= "" then return "done", questID end
-        local level = not completed and QuestLevel(questID)
-        if level then return IsGray(level) and "gray" or "starter", questID end
-        if questResolved[questID] then return completed and "hidden" or "starter", questID end
+        -- A quest with no title is a hidden one, never shown to the player,
+        -- so only a named quest can make the item safe to delete.
+        local title = QuestTitle(questID)
+        local named = title and title ~= ""
+        if named then
+            if C_QuestLog.IsQuestFlaggedCompleted(questID) then return "done", questID end
+            local level = QuestLevel(questID)
+            if level then return IsGray(level) and "gray" or "starter", questID end
+        end
+        if questResolved[questID] then return named and "starter" or "hidden", questID end
         if not questRequested[questID] then
             questRequested[questID] = true
             C_QuestLog.RequestLoadQuestByID(questID)
