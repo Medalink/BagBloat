@@ -6,8 +6,8 @@ Each quest item gets one label. It shows in the item's tooltip, so it works with
 
 - **Quest done.** The item starts a quest you already completed. Safe to delete.
 - **Gray quest.** The item starts a quest that is gray for your level. Safe to delete.
-- **No quest in log.** No quest in your log uses the item. It may be left over from a finished quest, or it may be for a quest you have not picked up yet. Check before deleting.
 - **Starts a quest.** The item starts a quest you have not done that is still worth experience.
+- **Hidden quest.** The game marks it as a quest item, but no quest you can see uses it, or the quest it starts is a hidden one with no name. Secret quest chains work this way, so keep it.
 - **On quest.** A quest in your log needs the item.
 
 ## Bag icons
@@ -15,8 +15,8 @@ Each quest item gets one label. It shows in the item's tooltip, so it works with
 Each quest item also gets an icon in the corner of its slot. This works in the game's own bags and bank and in EllesmereUI Bags and its bank.
 
 - **Green check.** You have the quest or already completed it (On quest, Quest done).
-- **Red X.** The quest is gray, or no quest in your log uses it (Gray quest, No quest in log). Check the second kind before deleting.
-- **Question mark.** It starts a quest you have not picked up (Starts a quest).
+- **Red X.** The quest is gray for your level (Gray quest).
+- **Question mark.** It starts a quest you have not picked up, or belongs to a hidden quest (Starts a quest, Hidden quest).
 
 ## Quest details
 
@@ -34,4 +34,4 @@ Bag Bloat never deletes anything itself.
 
 ## How it decides
 
-Quest-starting items are checked against your completed quests, your quest log and the quest's level. Items that a quest asks you to collect are matched by name against the objectives of the quests in your log. Bag Bloat scans your bags only when they or your quest log change, and has no settings. In combat it only shows what it already knows and checks again once combat ends.
+Quest-starting items are checked against your completed quests, your quest log and the quest's level. Items that a quest asks you to collect are matched by name against the objectives of the quests in your log. A quest item that matches nothing you can see is kept, since hidden quests never show in your log. Bag Bloat scans your bags only when they or your quest log change, and has no settings. In combat it only shows what it already knows and checks again once combat ends.
