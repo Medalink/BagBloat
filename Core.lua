@@ -63,6 +63,24 @@ local SECRET_ITEMS = {
     [282547] = true, -- Abyssal Mote
     [282431] = true, -- Tears of Anguish
     [282699] = true, -- Cleansed Water Globe
+    -- The Stone Key secret: the key's lock is still unknown.
+    [281350] = true, -- Keystone Fragment
+    [284092] = true, -- Keystone Fragment
+    [284093] = true, -- Keystone Fragment
+    [281358] = true, -- Stone Key
+    -- The Bloody Map from Hammerfall: where it points is still unknown.
+    [271745] = true, -- Bloody Map
+    -- The Coldflame Saber: both are used up when the saber is made.
+    [273637] = true, -- Blade of Silverlaine
+    [277490] = true, -- Scroll of the Saber
+    -- Lyn the Ignored in the Dalaran sewers: the tome summons her again and again.
+    [276561] = true, -- Black Tome
+    [275989] = true, -- Tome of Dalaran
+    [277507] = true, -- Dalaran Sewer Key
+    -- Ta'shkal, the secret hunter pet on Mount Hyjal.
+    [276909] = true, -- Corrupted Cat Figurine
+    -- The Malignant Root ring, a secret trade with Rethiel the Greenwarden.
+    [279537] = true, -- Rotheap Innards
 }
 
 local SLOT_KEY = 1000
