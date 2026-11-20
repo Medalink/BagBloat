@@ -31,15 +31,16 @@ end
 ns.bankOpen = false
 
 -- order sorts the window: things you can delete first, things to keep last.
--- mark picks the bag icon: check (have it or done it), x (gray), question (not started or hidden).
+-- mark picks the bag icon: check (have it or done it), x (gray or unused), question (not started, hidden or secret).
 ns.VERDICTS = {
     done    = { order = 1, safe = true, mark = "check",  label = "Quest done",      status = "Completed",         tip = "Quest already completed. Safe to delete.",   r = 0.30, g = 0.85, b = 0.40 },
     gray    = { order = 2, safe = true, mark = "x",  label = "Gray quest",      status = "Not started",       tip = "Quest is gray for you. Safe to delete.",     r = 0.62, g = 0.62, b = 0.62 },
-    starter = { order = 3, mark = "question",  label = "Starts a quest",  status = "Not started",       tip = "Starts a quest you have not done.",       r = 1.00, g = 0.82, b = 0.00 },
-    hidden  = { order = 4, mark = "question", label = "Hidden quest", tip = "No quest you can see uses this. It may be for a hidden quest. Keep it.", r = 1.00, g = 0.62, b = 0.20 },
-    secret  = { order = 4, mark = "question", label = "Secret quest", tip = "Part of a secret quest chain. Keep it.", r = 0.75, g = 0.45, b = 1.00 },
-    active  = { order = 5, mark = "check",  label = "On quest",        status = "In your quest log", tip = "A quest in your log needs this.",         r = 0.40, g = 0.70, b = 1.00 },
-    pending = { order = 6, label = "Loading", tip = "Loading quest data.", r = 0.50, g = 0.50, b = 0.50 },
+    orphan  = { order = 3, mark = "x", label = "No quest in log", tip = "No quest in your log uses this. Check before deleting.", r = 1.00, g = 0.40, b = 0.30 },
+    starter = { order = 4, mark = "question",  label = "Starts a quest",  status = "Not started",       tip = "Starts a quest you have not done.",       r = 1.00, g = 0.82, b = 0.00 },
+    hidden  = { order = 5, mark = "question", label = "Hidden quest", tip = "Starts a hidden quest with no name. Keep it.", r = 1.00, g = 0.62, b = 0.20 },
+    secret  = { order = 5, mark = "question", label = "Secret quest", tip = "Part of a secret quest chain. Keep it.", r = 0.75, g = 0.45, b = 1.00 },
+    active  = { order = 6, mark = "check",  label = "On quest",        status = "In your quest log", tip = "A quest in your log needs this.",         r = 0.40, g = 0.70, b = 1.00 },
+    pending = { order = 7, label = "Loading", tip = "Loading quest data.", r = 0.50, g = 0.50, b = 0.50 },
 }
 local VERDICTS = ns.VERDICTS
 for _, v in pairs(VERDICTS) do v.line = "Bag Bloat: " .. v.tip end
@@ -190,7 +191,7 @@ local function Classify(bag, slot, info)
 
     local owner = OwnerOfObjectiveItem(info.itemID, info.itemName)
     if owner then return "active", owner end
-    return "hidden"
+    return "orphan"
 end
 
 local function IsRelevant(bag, slot, itemID)

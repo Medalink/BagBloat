@@ -10,13 +10,14 @@ window:
 | --- | --- |
 | Quest done | The item starts a quest you already completed. Safe to delete. |
 | Gray quest | The item starts a quest that is gray for your level. Safe to delete. |
+| No quest in log | A quest item that no quest in your log uses, often left over from a quest you finished or dropped. Check before deleting. |
 | Starts a quest | The item starts a quest you have not done and that still gives experience. |
-| Hidden quest | The game marks it as a quest item, but no quest you can see uses it, or the quest it starts has no name. Secret quest chains work this way. Keep it. |
+| Hidden quest | The item starts a quest that has no name, which is how the game hides a quest. Keep it. |
 | Secret quest | The item belongs to a known secret quest chain, such as the Dawn Waker chain the Skyborne ring starts, the Stone Key, the Bloody Map, the Coldflame Saber, Lyn the Ignored, Ta'shkal or the Malignant Root. Always kept. |
 | On quest | A quest in your log needs the item. |
 
 In your bags, each quest item also gets a corner icon: a green check when you
-have the quest or already completed it, a red X when the quest is gray, and a
+have the quest or already completed it, a red X when the quest is gray or no quest in your log uses the item, and a
 question mark when it starts a quest you have not picked up or belongs to a hidden
 or secret quest. This works in the game's own bags and bank and in EllesmereUI
 Bags and its bank.
