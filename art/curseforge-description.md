@@ -8,6 +8,7 @@ Each quest item gets one label. It shows in the item's tooltip, so it works with
 - **Gray quest.** The item starts a quest that is gray for your level. Safe to delete.
 - **Starts a quest.** The item starts a quest you have not done that is still worth experience.
 - **Hidden quest.** The game marks it as a quest item, but no quest you can see uses it, or the quest it starts is a hidden one with no name. Secret quest chains work this way, so keep it.
+- **Secret quest.** The item belongs to a known secret quest chain, such as the Dawn Waker chain the Skyborne ring starts. Bag Bloat always keeps these, whatever the game reports.
 - **On quest.** A quest in your log needs the item.
 
 ## Bag icons
@@ -16,7 +17,7 @@ Each quest item also gets an icon in the corner of its slot. This works in the g
 
 - **Green check.** You have the quest or already completed it (On quest, Quest done).
 - **Red X.** The quest is gray for your level (Gray quest).
-- **Question mark.** It starts a quest you have not picked up, or belongs to a hidden quest (Starts a quest, Hidden quest).
+- **Question mark.** It starts a quest you have not picked up, or belongs to a hidden quest (Starts a quest, Hidden quest, Secret quest).
 
 ## Quest details
 

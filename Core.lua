@@ -37,11 +37,33 @@ ns.VERDICTS = {
     gray    = { order = 2, safe = true, mark = "x",  label = "Gray quest",      status = "Not started",       tip = "Quest is gray for you. Safe to delete.",     r = 0.62, g = 0.62, b = 0.62 },
     starter = { order = 3, mark = "question",  label = "Starts a quest",  status = "Not started",       tip = "Starts a quest you have not done.",       r = 1.00, g = 0.82, b = 0.00 },
     hidden  = { order = 4, mark = "question", label = "Hidden quest", tip = "No quest you can see uses this. It may be for a hidden quest. Keep it.", r = 1.00, g = 0.62, b = 0.20 },
+    secret  = { order = 4, mark = "question", label = "Secret quest", tip = "Part of a secret quest chain. Keep it.", r = 0.75, g = 0.45, b = 1.00 },
     active  = { order = 5, mark = "check",  label = "On quest",        status = "In your quest log", tip = "A quest in your log needs this.",         r = 0.40, g = 0.70, b = 1.00 },
     pending = { order = 6, label = "Loading", tip = "Loading quest data.", r = 0.50, g = 0.50, b = 0.50 },
 }
 local VERDICTS = ns.VERDICTS
 for _, v in pairs(VERDICTS) do v.line = "Bag Bloat: " .. v.tip end
+
+-- Items of secret quest chains, always kept whatever the game reports.
+-- The server hides most of them from the client's own item data.
+local SECRET_ITEMS = {
+    -- The Dawn Waker secret, started by the Skyborne ring.
+    [264908] = true, -- Ancient Heirloom
+    [280612] = true, -- Night Watchman's Torch
+    [282315] = true, -- Ancient Hilt
+    [264501] = true, -- Ancient Skyborne Blade
+    [276188] = true, -- Eluvi'ana
+    [279276] = true, -- Mathystral Amulet Fragment
+    [279277] = true, -- Mathystral Amulet
+    [279275] = true, -- Clouded Water Globe
+    [282337] = true, -- Befouled Water Globe
+    [282406] = true, -- Azsharan Key
+    [282404] = true, -- Narassin's Tome
+    [282548] = true, -- Star of Elune
+    [282547] = true, -- Abyssal Mote
+    [282431] = true, -- Tears of Anguish
+    [282699] = true, -- Cleansed Water Globe
+}
 
 local SLOT_KEY = 1000
 function ns.SlotKey(bag, slot) return bag * SLOT_KEY + slot end
@@ -117,6 +139,9 @@ end
 local function Classify(bag, slot, info)
     local qi = C_Container.GetContainerItemQuestInfo(bag, slot)
     local questID = qi and qi.questID
+    if SECRET_ITEMS[info.itemID] then
+        return "secret", questID and questID > 0 and questID or nil
+    end
     if questID and questID > 0 then
         if qi.isActive or logQuests[questID] or C_QuestLog.IsOnQuest(questID) then
             return "active", questID
@@ -153,6 +178,10 @@ end
 local function IsRelevant(bag, slot, itemID)
     local known = relevant[itemID]
     if known ~= nil then return known end
+    if SECRET_ITEMS[itemID] then
+        relevant[itemID] = true
+        return true
+    end
     local qi = C_Container.GetContainerItemQuestInfo(bag, slot)
     if qi and (qi.isQuestItem or (qi.questID and qi.questID > 0)) then
         relevant[itemID] = true

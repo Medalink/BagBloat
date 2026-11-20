@@ -12,12 +12,13 @@ window:
 | Gray quest | The item starts a quest that is gray for your level. Safe to delete. |
 | Starts a quest | The item starts a quest you have not done and that still gives experience. |
 | Hidden quest | The game marks it as a quest item, but no quest you can see uses it, or the quest it starts has no name. Secret quest chains work this way. Keep it. |
+| Secret quest | The item belongs to a known secret quest chain, such as the Dawn Waker chain the Skyborne ring starts. Always kept. |
 | On quest | A quest in your log needs the item. |
 
 In your bags, each quest item also gets a corner icon: a green check when you
 have the quest or already completed it, a red X when the quest is gray, and a
 question mark when it starts a quest you have not picked up or belongs to a hidden
-quest. This works in the game's own bags and bank and in EllesmereUI
+or secret quest. This works in the game's own bags and bank and in EllesmereUI
 Bags and its bank.
 
 Hold Alt while hovering a quest item for the quest ID, its status, your
