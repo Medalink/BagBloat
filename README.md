@@ -34,7 +34,8 @@ The window groups items by the zone of their quest, with your current zone
 first. Items no quest in your log uses, and items safe to delete, get their own
 groups at the end. While the bank is open, Bank on a group's header moves its
 items to the bank and Take moves them back to your bags. The By zone box
-switches back to one list. The window uses the Expressway font when EllesmereUI
+switches back to one list. Drag the bottom-right corner to resize the window;
+it remembers its size. The window uses the Expressway font when EllesmereUI
 or SharedMedia has it.
 
 ## Releasing
