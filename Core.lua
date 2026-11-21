@@ -140,14 +140,23 @@ function ns.Collapsed()
     return BagBloatDB.collapsed
 end
 
+-- [mapID] = the map's name, or false when it has none. GetMapInfo builds a
+-- table on every call, so each map is read once.
+local mapNames = {}
+
 local function MapName()
     local mapID = C_Map.GetBestMapForUnit("player")
-    local info = mapID and C_Map.GetMapInfo(mapID)
-    return info and info.name
+    if not mapID then return end
+    local name = mapNames[mapID]
+    if name == nil then
+        local info = C_Map.GetMapInfo(mapID)
+        name = info and info.name or false
+        mapNames[mapID] = name
+    end
+    return name or nil
 end
 
--- Whether a zone name is where the player stands. The map name is read last
--- because it builds a table.
+-- Whether a zone name is where the player stands.
 function ns.IsHere(zone)
     if not zone or zone == "" then return false end
     return zone == GetRealZoneText() or zone == GetZoneText() or zone == MapName()

@@ -63,20 +63,11 @@ local function OnMouseDown(self)
     if not self:IsMouseOver() then self:Hide() end
 end
 
--- Escape closes the popup alone, not the window behind it.
-local function OnKeyDown(self, key)
-    local close = key == "ESCAPE"
-    self:SetPropagateKeyboardInput(not close)
-    if close then self:Hide() end
-end
-
 local function CreateMenu()
     menu = CreateFrame("Frame", "BagBloatMenu", UIParent, "BackdropTemplate")
     menu:SetFrameStrata("DIALOG")
     menu:SetClampedToScreen(true)
     menu:EnableMouse(true)
-    menu:EnableKeyboard(true)
-    menu:SetPropagateKeyboardInput(true)
     UI.Panel(menu, C.overlay, C.border)
     menu.items = {}
     for i = 1, ITEM_COUNT do menu.items[i] = CreateItem(i) end
@@ -85,7 +76,7 @@ local function CreateMenu()
     menu:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
     menu:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
     menu:SetScript("OnEvent", OnMouseDown)
-    menu:SetScript("OnKeyDown", OnKeyDown)
+    -- Escape closes every special frame, so it closes the window too.
     tinsert(UISpecialFrames, "BagBloatMenu")
     menu:Hide()
 end
