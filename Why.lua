@@ -90,7 +90,8 @@ local function HoveredItem()
     if bag then return bag, slot, itemID end
     local data = GameTooltip.GetTooltipData and GameTooltip:GetTooltipData()
     local id = data and data.id
-    if type(id) == "number" and ns.IsPlain(id) then
+    local isItem = data and data.type == Enum.TooltipDataType.Item
+    if isItem and type(id) == "number" and ns.IsPlain(id) then
         bag, slot = ns.FindItem(id)
         return bag, slot, id
     end

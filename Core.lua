@@ -19,7 +19,7 @@ local BAGS = {
 }
 
 -- The bank's tabs, readable only while the bank is open.
-local BANK_BAGS, IS_BANK = {}, {}
+local BANK_BAGS, IS_BANK, IS_ACCOUNT = {}, {}, {}
 if BAG then
     for _, prefix in ipairs({ "CharacterBankTab_", "AccountBankTab_" }) do
         for i = 1, 12 do
@@ -27,6 +27,7 @@ if BAG then
             if bag then
                 BANK_BAGS[#BANK_BAGS + 1] = bag
                 IS_BANK[bag] = true
+                if prefix == "AccountBankTab_" then IS_ACCOUNT[bag] = true end
             end
         end
     end
@@ -120,7 +121,8 @@ function ns.IsPlain(v)
 end
 
 -- Saved variables are not loaded when this file runs, so the tables are made on use.
--- keep and hide are [itemID] = true; bank is the last bank visit's quest items.
+-- keep and hide are [itemID] = true; bank and warbank are the quest items the
+-- last visit saw in the character tabs and in the account tabs.
 function ns.CharDB()
     local db = BagBloatCharDB
     if not db then
@@ -130,6 +132,7 @@ function ns.CharDB()
     db.keep = db.keep or {}
     db.hide = db.hide or {}
     db.bank = db.bank or {}
+    db.warbank = db.warbank or {}
     return db
 end
 
@@ -324,13 +327,21 @@ local function ByVerdict(a, b)
     return (a.slot or 0) < (b.slot or 0)
 end
 
--- The bank's tabs only report their size while the bank is open and loaded.
-local function BankReady()
+-- A bank section (the character tabs, or the account tabs) reports its size
+-- only while it is open and loaded. One can be readable without the other.
+local function SectionReady(account)
     for _, bag in ipairs(BANK_BAGS) do
-        if C_Container.GetContainerNumSlots(bag) > 0 then return true end
+        if (IS_ACCOUNT[bag] or false) == account and C_Container.GetContainerNumSlots(bag) > 0 then
+            return true
+        end
     end
     return false
 end
+
+-- Bank contents arrive a moment after the bank opens, so a read this early
+-- must not replace the memory.
+local BANK_SETTLE = 1
+local bankOpenedAt = 0
 
 local function PoolRecord(n)
     local rec = recPool[n]
@@ -380,6 +391,31 @@ local function RememberBankItem(bank, i, itemID, info, qi)
     entry.name, entry.link, entry.icon, entry.quality = info.itemName, info.hyperlink, info.iconFileID, info.quality
 end
 
+-- Ends a scan for one bank section. A section read live keeps only what this
+-- scan saw; one out of reach is listed from what the last visit saw.
+local function CloseSection(list, live, settled, seen, n, safe, keep, hide)
+    if live then
+        if settled then
+            for i = #list, seen + 1, -1 do list[i] = nil end
+        end
+        return n, safe
+    end
+    for i = 1, #list do
+        local e = list[i]
+        local verdict, questID = ClassifyQuest(e.itemID, e.name, e.questID, false, e.isQuestItem)
+        if verdict then
+            n = n + 1
+            local rec = PoolRecord(n)
+            verdict = Override(verdict, e.itemID, keep, hide)
+            SetItemFields(rec, nil, nil, e.itemID, e.name, e.link, e.icon, e.count, e.quality, true, true)
+            SetQuestFields(rec, verdict, questID)
+            records[n] = rec
+            if VERDICTS[verdict].safe then safe = safe + 1 end
+        end
+    end
+    return n, safe
+end
+
 local function Scan()
     local started = debugprofilestop()
     if questsDirty then
@@ -389,10 +425,12 @@ local function Scan()
     bagsDirty = false
     wipe(records); wipe(byItem); wipe(bySlot)
     local cdb = ns.CharDB()
-    local keep, hide, bank = cdb.keep, cdb.hide, cdb.bank
-    local liveBank = ns.bankOpen and BankReady()
-    local n, safe, safeBag, banked = 0, 0, 0, 0
-    local lastBag = #BAGS + (liveBank and #BANK_BAGS or 0)
+    local keep, hide = cdb.keep, cdb.hide
+    local charLive = ns.bankOpen and SectionReady(false)
+    local acctLive = ns.bankOpen and SectionReady(true)
+    local settled = ns.bankOpen and GetTime() - bankOpenedAt >= BANK_SETTLE
+    local n, safe, safeBag, charN, acctN = 0, 0, 0, 0, 0
+    local lastBag = #BAGS + (ns.bankOpen and #BANK_BAGS or 0)
     for b = 1, lastBag do
         local bag = BAGS[b] or BANK_BAGS[b - #BAGS]
         local inBank = IS_BANK[bag] or nil
@@ -419,31 +457,20 @@ local function Scan()
                     safe = safe + 1
                     if not inBank then safeBag = safeBag + 1 end
                 end
-                if inBank then
-                    banked = banked + 1
-                    RememberBankItem(bank, banked, itemID, info, qi)
+                if inBank and settled then
+                    if IS_ACCOUNT[bag] then
+                        acctN = acctN + 1
+                        RememberBankItem(cdb.warbank, acctN, itemID, info, qi)
+                    else
+                        charN = charN + 1
+                        RememberBankItem(cdb.bank, charN, itemID, info, qi)
+                    end
                 end
             end
         end
     end
-    if liveBank then
-        for i = #bank, banked + 1, -1 do bank[i] = nil end
-    else
-        -- The bank is out of reach: list what the last visit saw.
-        for i = 1, #bank do
-            local e = bank[i]
-            local verdict, questID = ClassifyQuest(e.itemID, e.name, e.questID, false, e.isQuestItem)
-            if verdict then
-                n = n + 1
-                local rec = PoolRecord(n)
-                verdict = Override(verdict, e.itemID, keep, hide)
-                SetItemFields(rec, nil, nil, e.itemID, e.name, e.link, e.icon, e.count, e.quality, true, true)
-                SetQuestFields(rec, verdict, questID)
-                records[n] = rec
-                if VERDICTS[verdict].safe then safe = safe + 1 end
-            end
-        end
-    end
+    n, safe = CloseSection(cdb.bank, charLive, settled, charN, n, safe, keep, hide)
+    _, safe = CloseSection(cdb.warbank, acctLive, settled, acctN, n, safe, keep, hide)
     sort(records, ByVerdict)
     ns.safeCount, ns.safeBagCount = safe, safeBag
     scanCount = scanCount + 1
@@ -463,7 +490,7 @@ local refreshQueued = false
 local function RunRefresh()
     refreshQueued = false
     if not (bagsDirty or questsDirty) or InCombatLockdown() then return end
-    if not (ns.IsWindowShown() or ns.BagsOpen()) then return end
+    if not (ns.IsWindowShown() or ns.BagsOpen() or ns.bankOpen) then return end
     Scan()
     ns.RepaintMarks()
 end
@@ -537,6 +564,8 @@ local function BankIsOpen()
     end
     return true
 end
+ns.BankIsOpen = BankIsOpen
+
 local moveBag, moveSlot, moveItem, moveTries = {}, {}, {}, {}
 local moveHead, moveTail = 1, 0
 
@@ -606,10 +635,14 @@ local function SlotLocked(bag, slot)
     return info and info.isLocked
 end
 
+-- [itemID] = true once the game refused to delete it this session.
+local refused = {}
+
 -- The first record in list (default: all of them) that DeleteRecord would take.
 function ns.NextDeletable(list)
     for _, rec in ipairs(list or records) do
-        if rec.bag and not rec.inBank and VERDICTS[rec.verdict].safe and not SlotLocked(rec.bag, rec.slot) then
+        if rec.bag and not rec.inBank and VERDICTS[rec.verdict].safe and not refused[rec.itemID]
+            and not SlotLocked(rec.bag, rec.slot) then
             return rec
         end
     end
@@ -634,6 +667,13 @@ function ns.DeleteRecord(rec)
     local kind, id = GetCursorInfo()
     if kind == "item" and id == itemID then
         DeleteCursorItem()
+        if CursorHasItem() then
+            -- The game refused: put the item back and stop offering it.
+            ClearCursor()
+            refused[itemID] = true
+            print("Bag Bloat: the game would not delete " .. (link or itemID))
+            return false
+        end
         print("Bag Bloat: deleted " .. (link or itemID))
         ns.MarkDirty()
         return true
@@ -682,6 +722,15 @@ end
 
 local QUEST_EVENTS = { QUEST_LOG_UPDATE = true, QUEST_TURNED_IN = true }
 
+-- A scan made outside the queued refresh repaints the bag icons itself.
+local function Fresh()
+    if (bagsDirty or questsDirty) and not InCombatLockdown() then
+        Scan()
+        ns.RepaintMarks()
+    end
+    return records
+end
+
 -- [zone] = true once this session's chat line about that zone's bank items ran.
 local announced = {}
 
@@ -692,7 +741,7 @@ local function ZoneLine()
     if not zone or zone == "" then zone = GetZoneText() end
     if not zone or zone == "" or announced[zone] then return end
     local count = 0
-    for _, rec in ipairs((ns.Get())) do
+    for _, rec in ipairs(Fresh()) do
         if rec.inBank and rec.zone and ns.IsHere(rec.zone) and not VERDICTS[rec.verdict].safe
             and rec.verdict ~= "ignored" then
             count = count + 1
@@ -730,10 +779,15 @@ local function BagsFullLine()
     if free > 0 or not was or was == 0 then return end
     local now = GetTime()
     if lastFullLine and now - lastFullLine < BAGS_FULL_GAP then return end
-    ns.Get()
-    if ns.safeBagCount == 0 then return end
+    Fresh()
+    local count = ns.safeBagCount
+    if count == 0 then return end
     lastFullLine = now
-    print(format("Bag Bloat: bags full. %d quest item(s) safe to delete. Type /bloat.", ns.safeBagCount))
+    if count == 1 then
+        print("Bag Bloat: bags full. 1 quest item is safe to delete. Type /bloat.")
+    else
+        print(format("Bag Bloat: bags full. %d quest items are safe to delete. Type /bloat.", count))
+    end
 end
 
 -- Reads the bank once the game has had time to fill it, even with every
@@ -763,7 +817,10 @@ events:SetScript("OnEvent", function(_, event, arg1)
         return
     elseif event == "BANKFRAME_OPENED" or event == "BANKFRAME_CLOSED" then
         ns.bankOpen = event == "BANKFRAME_OPENED"
-        if ns.bankOpen then C_Timer.After(0.5, ScanBank) end
+        if ns.bankOpen then
+            bankOpenedAt = GetTime()
+            C_Timer.After(BANK_SETTLE + 0.1, ScanBank)
+        end
     elseif event == "PLAYER_REGEN_ENABLED" then
         if bagsDirty or questsDirty then ns.MarkDirty() else ns.RefreshWindow() end
         BagsFullLine()
@@ -823,10 +880,10 @@ function ns.Explain(bag, slot, itemID)
     else
         if bag then add("note", "that slot holds a different item now") end
         bag, slot = nil, nil
-        for _, e in ipairs(ns.CharDB().bank) do
-            if e.itemID == itemID then
-                entry = e
-                break
+        local cdb = ns.CharDB()
+        for _, list in ipairs({ cdb.bank, cdb.warbank }) do
+            for _, e in ipairs(list) do
+                if e.itemID == itemID then entry = entry or e end
             end
         end
     end

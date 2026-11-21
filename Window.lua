@@ -262,11 +262,15 @@ local function IsCollapsed(g)
     return state
 end
 
+-- Set below, with the Delete button's state.
+local DisarmDelete
+
 local function HeaderOnClick(h)
     local g = h.group
     if not g or query ~= "" then return end
     local state = ns.Collapsed()
     state[g.title] = not IsCollapsed(g)
+    DisarmDelete()
     ns.RefreshWindow()
 end
 
@@ -284,7 +288,7 @@ end
 
 local function FillButton(button, g, count)
     local reason
-    if not ns.bankOpen then
+    if not ns.BankIsOpen() then
         reason = "Open your bank"
     elseif InCombatLockdown() or UnitAffectingCombat("player") then
         reason = "In combat"
@@ -309,6 +313,7 @@ local armed, armedAt, lastDelete, deletedOne, disarmQueued = false, 0, 0, false,
 local function Disarm()
     armed, deletedOne = false, false
 end
+DisarmDelete = Disarm
 
 local function DisarmCheck()
     disarmQueued = false
@@ -328,6 +333,9 @@ local function FillDelete(button, g)
     local reason, nextRec
     if InCombatLockdown() or UnitAffectingCombat("player") then
         reason = "In combat"
+    elseif IsCollapsed(g) then
+        -- A folded group shows no rows: never delete what cannot be seen.
+        reason = "Open the group first"
     else
         nextRec = ns.NextDeletable(g.recs)
         if not nextRec then reason = "Nothing in your bags to delete" end
@@ -362,7 +370,10 @@ local function DeleteOnClick(button)
     end
     -- A second click before the bags update would hit the item just deleted.
     if now - lastDelete < DELETE_GAP then return end
+    -- A rescan rebuilds the groups, so the target is read after it.
+    ns.Get()
     local g = button.group
+    if not armed or not button:IsEnabled() then return end
     if g and ns.DeleteRecord(ns.NextDeletable(g.recs)) then
         lastDelete, deletedOne = now, true
     end
@@ -491,6 +502,7 @@ function ns.RefreshWindow()
     local y, rowN, headN = 0, 0, 0
     if ByZone() then
         BuildGroups(records)
+        if not safeGroup then DisarmDelete() end
         for _, g in ipairs(groups) do
             headN = headN + 1
             local h = headers[headN]
@@ -703,6 +715,7 @@ local function SearchOnChanged(box)
     local text = lower(box:GetText())
     if text == query then return end
     query = text
+    DisarmDelete()
     ns.RefreshWindow()
 end
 
@@ -787,7 +800,8 @@ local function CreateWindow()
     CreateSearch()
 
     summary = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    summary:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
+    -- Both points sit on the search box's center line, so the height is the text's own.
+    summary:SetPoint("LEFT", frame, "TOPLEFT", 12, -(27 + SEARCH_H / 2))
     summary:SetPoint("RIGHT", search, "LEFT", -8, 0)
     summary:SetJustifyH("LEFT")
     summary:SetWordWrap(false)
