@@ -338,15 +338,19 @@ local function SetItemFields(rec, bag, slot, itemID, name, link, icon, count, qu
     rec.name, rec.link, rec.icon, rec.count, rec.quality = name or "", link, icon, count, quality
 end
 
+-- A quest under a collapsed log header may be missing from logZone.
+local function ZoneFor(questID, verdict)
+    if not questID then return end
+    return logZone[questID] or (verdict == "active" and MapZoneName(questID)) or AreaZoneName(questID) or nil
+end
+
 local function SetQuestFields(rec, verdict, questID)
     local inLog = questID and logQuests[questID] ~= nil
     local level = questID and QuestLevel(questID)
     local title = questID and QuestTitle(questID)
     rec.verdict, rec.questID, rec.questLevel, rec.questTitle = verdict, questID, level, title
     rec.questText = title and (level and "[" .. level .. "] " .. title or title) or nil
-    -- A quest under a collapsed log header may be missing from logZone.
-    rec.zone = questID and (logZone[questID] or (verdict == "active" and MapZoneName(questID))
-        or AreaZoneName(questID)) or nil
+    rec.zone = ZoneFor(questID, verdict)
     rec.objectives = inLog and logObjectives[questID] or nil
     rec.ready = inLog and C_QuestLog.ReadyForTurnIn(questID) or nil
 end
@@ -778,6 +782,91 @@ for _, event in ipairs({
     events:RegisterEvent(event)
 end
 
+-- The first slot in your bags, or the open bank, that holds itemID.
+function ns.FindItem(itemID)
+    local lastBag = #BAGS + (ns.bankOpen and #BANK_BAGS or 0)
+    for b = 1, lastBag do
+        local bag = BAGS[b] or BANK_BAGS[b - #BAGS]
+        for slot = 1, C_Container.GetContainerNumSlots(bag) do
+            if C_Container.GetContainerItemID(bag, slot) == itemID then return bag, slot end
+        end
+    end
+end
+
+-- What the game says about one item and what the rules made of it, as
+-- "key: value" lines for /bloat why. bag and slot are nil for an item that is
+-- not in your bags; the bank memory then stands in for the game's quest info.
+function ns.Explain(bag, slot, itemID)
+    ns.Get()
+    local lines = {}
+    local function add(key, value)
+        lines[#lines + 1] = key .. ": " .. tostring(value)
+    end
+    local gameVersion, gameBuild = GetBuildInfo()
+    add("addon version", C_AddOns.GetAddOnMetadata("BagBloat", "Version"))
+    add("client build", gameVersion .. " (" .. tostring(gameBuild) .. ")")
+    add("player level", UnitLevel("player"))
+
+    local info, qi, entry
+    if bag and C_Container.GetContainerItemID(bag, slot) == itemID then
+        info = C_Container.GetContainerItemInfo(bag, slot)
+        qi = C_Container.GetContainerItemQuestInfo(bag, slot)
+    else
+        if bag then add("note", "that slot holds a different item now") end
+        bag, slot = nil, nil
+        for _, e in ipairs(ns.CharDB().bank) do
+            if e.itemID == itemID then
+                entry = e
+                break
+            end
+        end
+    end
+    local name = info and info.itemName or entry and entry.name or C_Item.GetItemNameByID(itemID)
+    local _, _, _, _, _, classID, subClassID = C_Item.GetItemInfoInstant(itemID)
+    add("item id", itemID)
+    add("name", name)
+    add("quality", info and info.quality or entry and entry.quality)
+    add("item class id", classID)
+    add("item subclass id", subClassID)
+    add("bag", bag)
+    add("slot", slot)
+
+    local isQuestItem, questID, isActive = qi and qi.isQuestItem, qi and qi.questID, qi and qi.isActive
+    if entry then
+        isQuestItem, questID = entry.isQuestItem, entry.questID
+        add("source", "remembered bank entry")
+    end
+    add("quest info isQuestItem", isQuestItem)
+    add("quest info questID", questID)
+    add("quest info isActive", isActive)
+    if questID and questID > 0 then
+        add("quest title", QuestTitle(questID))
+        add("quest difficulty level", C_QuestLog.GetQuestDifficultyLevel(questID))
+        add("flagged completed", C_QuestLog.IsQuestFlaggedCompleted(questID))
+        add("on quest", C_QuestLog.IsOnQuest(questID))
+        add("in log", logQuests[questID] ~= nil)
+        add("ready for turn-in", C_QuestLog.ReadyForTurnIn(questID))
+        add("log zone", logZone[questID])
+        add("quest ui map id", GetQuestUiMapID and GetQuestUiMapID(questID))
+        add("table area id", QUEST_AREA[questID])
+        add("table area name", AreaZoneName(questID))
+        add("load requested", questRequested[questID])
+        add("load resolved", questResolved[questID])
+    end
+
+    local cdb = ns.CharDB()
+    local owner = OwnerOfObjectiveItem(itemID, name)
+    add("in secret list", SECRET_ITEMS[itemID] == true)
+    add("kept by you", cdb.keep[itemID] == true)
+    add("hidden by you", cdb.hide[itemID] == true)
+    add("objective owner", owner and (owner .. " " .. tostring(QuestTitle(owner))) or "none")
+    local verdict, ownerID = ClassifyQuest(itemID, name, questID, isActive, isQuestItem)
+    if verdict then verdict = Override(verdict, itemID, cdb.keep, cdb.hide) end
+    add("final verdict", verdict and VERDICTS[verdict].label or "not a quest item")
+    add("zone used", ZoneFor(ownerID, verdict) or "none")
+    return lines
+end
+
 local function PrintStats()
     UpdateAddOnMemoryUsage()
     print(string.format("Bag Bloat: %.0f KB, %d quest items, %d scans, last scan %.2f ms",
@@ -787,7 +876,15 @@ end
 SLASH_BAGBLOAT1 = "/bagbloat"
 SLASH_BAGBLOAT2 = "/bloat"
 SlashCmdList.BAGBLOAT = function(msg)
-    if msg and msg:lower():match("^%s*stats") then PrintStats() else ns.ToggleWindow() end
+    local word, rest = (msg or ""):match("^%s*(%S*)%s*(.-)%s*$")
+    word = word:lower()
+    if word == "stats" then
+        PrintStats()
+    elseif word == "why" then
+        ns.Why(rest)
+    else
+        ns.ToggleWindow()
+    end
 end
 
 function BagBloat_OnAddonCompartmentClick()
