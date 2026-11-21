@@ -1,78 +1,26 @@
 local _, ns = ...
 
 local ipairs, wipe, sort, format = ipairs, wipe, table.sort, string.format
-local floor, max, min, rad = math.floor, math.max, math.min, math.rad
+local floor, max, min = math.floor, math.max, math.min
 
 local WIDTH, HEIGHT, ROW_H, ICON = 380, 440, 36, 28
 local MIN_W, MIN_H, MAX_W, MAX_H = 320, 260, 900, 1200
 local HEADER_H, BUTTON_W, BUTTON_H = 26, 38, 20
 local BAR_W, THUMB_MIN, GRIP = 4, 24, 14
-local FLAT = "Interface\\Buttons\\WHITE8X8"
 local frame, scroll, bar, content, summary, empty
 local rows, isRow, headers = {}, {}, {}
-local fontPath
 local contentH, scrollRange = 1, 0
 
--- Signal graphite values, copied from the Meda palette. Bag Bloat loads no Meda code.
-local C = {
-    bg = { 0.059, 0.059, 0.059, 1 },
-    surface = { 1, 1, 1, 0.021 },
-    surfaceHover = { 1, 1, 1, 0.064 },
-    clear = { 1, 1, 1, 0 },
-    border = { 1, 1, 1, 0.171 },
-    borderHover = { 0.545, 0.545, 0.545, 1 },
-    divider = { 1, 1, 1, 0.107 },
-    text = { 0.961, 0.961, 0.961, 1 },
-    muted = { 0.678, 0.678, 0.678, 1 },
-    section = { 0.6, 0.6, 0.6, 1 },
-    faint = { 0.545, 0.545, 0.545, 1 },
-    accent = { 0, 0.831, 1, 1 },
-    mark = { 0.059, 0.059, 0.059, 1 },
-    success = { 0, 1, 0.533, 1 },
-}
-
-local function Hex(c)
-    return format("|cff%02x%02x%02x", floor(c[1] * 255 + 0.5), floor(c[2] * 255 + 0.5), floor(c[3] * 255 + 0.5))
-end
+local UI = ns.UI
+local C = UI.C
+local Hex, Tint, Fill, Solid, Skin = UI.Hex, UI.Tint, UI.Fill, UI.Solid, UI.Skin
+local ApplyFont = UI.ApplyFont
 
 local HERE_TAG = " " .. Hex(C.success) .. "here|r"
 local BANK_TAG = " " .. Hex(C.muted) .. "(bank)|r"
 
-local function Tint(fs, c)
-    fs:SetTextColor(c[1], c[2], c[3], c[4])
-end
-
-local function Fill(tex, c)
-    tex:SetColorTexture(c[1], c[2], c[3], c[4])
-end
-
-local function Solid(parent, layer, c)
-    local tex = parent:CreateTexture(nil, layer)
-    Fill(tex, c)
-    return tex
-end
-
-local function Skin(f, fill, edge)
-    f:SetBackdropColor(fill[1], fill[2], fill[3], fill[4])
-    f:SetBackdropBorderColor(edge[1], edge[2], edge[3], edge[4])
-end
-
 local function Clamp(v, lo, hi)
     return max(lo, min(hi, v))
-end
-
--- Expressway, when EllesmereUI or SharedMedia has it; resolved once.
-local function ResolveFont()
-    if EllesmereUI and EllesmereUI.EXPRESSWAY then return EllesmereUI.EXPRESSWAY end
-    local lsm = LibStub and LibStub("LibSharedMedia-3.0", true)
-    return lsm and lsm:Fetch("font", "Expressway", true)
-end
-
--- With Expressway the text takes the Meda role size; without it the template font stays.
-function ns.ApplyFont(fs, size)
-    if not fontPath then return end
-    local _, current, flags = fs:GetFont()
-    if current then fs:SetFont(fontPath, size or current, flags) end
 end
 
 local function ByZone()
@@ -150,19 +98,19 @@ local function CreateRow()
 
     row.count = row:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     row.count:SetPoint("BOTTOMRIGHT", row.icon, "BOTTOMRIGHT", 1, 0)
-    ns.ApplyFont(row.count, 12)
+    ApplyFont(row.count, 12)
 
     row.status = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     row.status:SetPoint("TOPRIGHT", -6, -5)
     row.status:SetJustifyH("RIGHT")
-    ns.ApplyFont(row.status, 12)
+    ApplyFont(row.status, 12)
 
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     row.name:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 8, 0)
     row.name:SetPoint("RIGHT", row.status, "LEFT", -6, 0)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
-    ns.ApplyFont(row.name, 14)
+    ApplyFont(row.name, 14)
 
     row.quest = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.quest:SetPoint("BOTTOMLEFT", row.icon, "BOTTOMRIGHT", 8, 0)
@@ -170,7 +118,7 @@ local function CreateRow()
     row.quest:SetJustifyH("LEFT")
     row.quest:SetWordWrap(false)
     Tint(row.quest, C.muted)
-    ns.ApplyFont(row.quest, 12)
+    ApplyFont(row.quest, 12)
 
     row:SetScript("OnEnter", ns.ShowRowTooltip)
     row:SetScript("OnLeave", GameTooltip_Hide)
@@ -262,62 +210,14 @@ local function BuildGroups(records)
     if safeGroup then groups[#groups + 1] = safeGroup end
 end
 
--- Flat button: clear fill, border color, brighter border on hover, raised fill while pressed.
-local function PaintButton(button)
-    local edge = (button.hover and button:IsEnabled()) and C.borderHover or C.border
-    Skin(button, button.down and C.surfaceHover or C.clear, edge)
-end
-
-local function ButtonOnEnter(button)
-    button.hover = true
-    PaintButton(button)
-    GameTooltip:SetOwner(button, "ANCHOR_TOP")
-    GameTooltip:SetText(button.tip or "", 1, 1, 1)
-    GameTooltip:Show()
-end
-
-local function ButtonOnLeave(button)
-    button.hover, button.down = false, false
-    PaintButton(button)
-    if GameTooltip:GetOwner() == button then GameTooltip_Hide() end
-end
-
-local function ButtonOnDown(button)
-    if not button:IsEnabled() then return end
-    button.down = true
-    PaintButton(button)
-end
-
-local function ButtonOnUp(button)
-    button.down = false
-    PaintButton(button)
-end
-
 local function ButtonOnClick(button)
     local g = button.group
     if g then ns.MoveRecords(g.recs, button.toBank) end
 end
 
 local function CreateButton(parent, label, toBank)
-    local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    button:SetSize(BUTTON_W, BUTTON_H)
-    button:SetBackdrop({ bgFile = FLAT, edgeFile = FLAT, edgeSize = 1 })
+    local button = UI.Button(parent, label, BUTTON_W, BUTTON_H)
     button.toBank = toBank
-    PaintButton(button)
-
-    button.label = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    button.label:SetPoint("CENTER")
-    button.label:SetText(label)
-    Tint(button.label, C.text)
-    ns.ApplyFont(button.label, 12)
-
-    -- A disabled button still needs to explain itself.
-    button:SetMotionScriptsWhileDisabled(true)
-    button:SetScript("OnEnter", ButtonOnEnter)
-    button:SetScript("OnLeave", ButtonOnLeave)
-    button:SetScript("OnMouseDown", ButtonOnDown)
-    button:SetScript("OnMouseUp", ButtonOnUp)
-    button:SetScript("OnHide", ButtonOnLeave)
     button:SetScript("OnClick", ButtonOnClick)
     return button
 end
@@ -334,14 +234,12 @@ local function FillButton(button, g, count)
         reason = "Nothing to move"
     end
     button.group = g
-    button:SetEnabled(reason == nil)
-    button:SetAlpha(reason and 0.4 or 1)
     if reason then
         button.tip = reason
     else
         button.tip = format(button.toBank and "Move %d to the bank" or "Move %d to your bags", count)
     end
-    PaintButton(button)
+    UI.SetEnabled(button, reason == nil)
 end
 
 local function CreateHeader()
@@ -365,7 +263,7 @@ local function CreateHeader()
     h.count = h:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     h.count:SetJustifyH("RIGHT")
     Tint(h.count, C.muted)
-    ns.ApplyFont(h.count, 12)
+    ApplyFont(h.count, 12)
 
     h.title = h:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     h.title:SetPoint("LEFT", 6, 0)
@@ -373,7 +271,7 @@ local function CreateHeader()
     h.title:SetJustifyH("LEFT")
     h.title:SetWordWrap(false)
     Tint(h.title, C.text)
-    ns.ApplyFont(h.title, 14)
+    ApplyFont(h.title, 14)
     return h
 end
 
@@ -511,58 +409,17 @@ local function OnZoneToggle(check)
     ns.RefreshWindow()
 end
 
-local function PaintClose(close)
-    local c = close.hover and C.text or C.section
-    Fill(close.a, c)
-    Fill(close.b, c)
-end
-
-local function CreateClose()
-    local close = CreateFrame("Button", nil, frame)
-    close:SetSize(20, 20)
-    close:SetPoint("TOPRIGHT", -6, -6)
-    -- Two 1px bars rotated into an X; rotation turns a flat texture, no art file.
-    close.a = close:CreateTexture(nil, "OVERLAY")
-    close.a:SetSize(1, 12)
-    close.a:SetPoint("CENTER")
-    close.a:SetRotation(rad(45))
-    close.b = close:CreateTexture(nil, "OVERLAY")
-    close.b:SetSize(1, 12)
-    close.b:SetPoint("CENTER")
-    close.b:SetRotation(rad(-45))
-    -- Rotated 1px bars render unevenly while snapped to the pixel grid.
-    for _, t in ipairs({ close.a, close.b }) do
-        if t.SetSnapToPixelGrid then
-            t:SetSnapToPixelGrid(false)
-            t:SetTexelSnappingBias(0)
-        end
-    end
-    PaintClose(close)
-    close:SetScript("OnEnter", function(self)
-        self.hover = true
-        PaintClose(self)
-    end)
-    local function Leave(self)
-        self.hover = false
-        PaintClose(self)
-    end
-    close:SetScript("OnLeave", Leave)
-    close:SetScript("OnHide", Leave)
-    close:SetScript("OnClick", function() frame:Hide() end)
-    return close
-end
-
 local function CreateCheck(close)
     local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("RIGHT", close, "LEFT", -10, 0)
     label:SetText("By zone")
-    ns.ApplyFont(label, 13)
+    ApplyFont(label, 13)
 
     -- A bare CheckButton: no template, so the only art is what is drawn here.
     local check = CreateFrame("CheckButton", nil, frame, "BackdropTemplate")
     check:SetSize(16, 16)
     check:SetPoint("RIGHT", label, "LEFT", -6, 0)
-    check:SetBackdrop({ bgFile = FLAT, edgeFile = FLAT, edgeSize = 1 })
+    UI.Panel(check, C.clear)
     check:SetHitRectInsets(0, -(label:GetStringWidth() + 6), 0, 0)
     check.label = label
     check.mark = Solid(check, "OVERLAY", C.mark)
@@ -673,7 +530,6 @@ local function OnWheel(_, delta)
 end
 
 local function CreateWindow()
-    fontPath = ResolveFont()
     frame = CreateFrame("Frame", "BagBloatFrame", UIParent, "BackdropTemplate")
     RestoreSize()
     frame:SetFrameStrata("HIGH")
@@ -697,15 +553,14 @@ local function CreateWindow()
         SavePosition()
     end)
     frame:SetScript("OnMouseWheel", OnWheel)
-    frame:SetBackdrop({ bgFile = FLAT, edgeFile = FLAT, edgeSize = 1 })
-    Skin(frame, C.bg, C.border)
+    UI.Panel(frame)
     RestorePosition()
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 12, -10)
     title:SetText("Bag Bloat")
     Tint(title, C.text)
-    ns.ApplyFont(title, 17)
+    ApplyFont(title, 17)
 
     summary = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     summary:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
@@ -713,14 +568,14 @@ local function CreateWindow()
     summary:SetJustifyH("LEFT")
     summary:SetWordWrap(false)
     Tint(summary, C.muted)
-    ns.ApplyFont(summary, 13)
+    ApplyFont(summary, 13)
 
     local divider = Solid(frame, "BORDER", C.divider)
     divider:SetPoint("TOPLEFT", 1, -48)
     divider:SetPoint("TOPRIGHT", -1, -48)
     divider:SetHeight(1)
 
-    CreateCheck(CreateClose())
+    CreateCheck(UI.CloseButton(frame))
 
     scroll = CreateFrame("ScrollFrame", nil, frame)
     scroll:SetPoint("TOPLEFT", 8, -54)
@@ -743,7 +598,7 @@ local function CreateWindow()
     empty:SetPoint("CENTER", scroll, "CENTER")
     empty:SetText("No quest items in your bags.")
     Tint(empty, C.muted)
-    ns.ApplyFont(empty, 13)
+    ApplyFont(empty, 13)
 
     frame:SetScript("OnShow", ns.RefreshWindow)
     tinsert(UISpecialFrames, "BagBloatFrame")
