@@ -31,6 +31,10 @@ Type `/bloat` or `/bagbloat`, or click Bag Bloat in the addon compartment by the
 - Click a row to pick the item up, then click outside your bags. The game asks you to confirm the delete.
 - Shift-click a row to link the item in chat.
 - Hover a row for the full item tooltip.
+- Items are grouped by the zone of their quest, with your current zone first. Items no quest in your log uses, and items safe to delete, get their own groups at the end.
+- While the bank is open, Bank on a group's header moves its items to the bank and Take moves them back to your bags.
+- The By zone box switches back to one list.
+- The window uses the Expressway font when EllesmereUI or SharedMedia has it.
 
 Bag Bloat never deletes anything itself.
 

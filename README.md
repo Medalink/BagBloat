@@ -30,6 +30,13 @@ to the minimap. Click a row to pick the item up, then click outside your bags to
 delete it through the game's own confirmation. Shift-click a row to link the
 item in chat. Bag Bloat never deletes anything itself.
 
+The window groups items by the zone of their quest, with your current zone
+first. Items no quest in your log uses, and items safe to delete, get their own
+groups at the end. While the bank is open, Bank on a group's header moves its
+items to the bank and Take moves them back to your bags. The By zone box
+switches back to one list. The window uses the Expressway font when EllesmereUI
+or SharedMedia has it.
+
 ## Releasing
 
 Pushing a tag publishes: GitHub Actions runs the BigWigs packager, which uploads

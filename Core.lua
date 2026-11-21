@@ -29,6 +29,9 @@ if BAG then
     end
 end
 ns.bankOpen = false
+ns.moving = false
+local BANK_TYPE = Enum.BankType and Enum.BankType.Character
+local BANKER = Enum.PlayerInteractionType and Enum.PlayerInteractionType.Banker
 
 -- order sorts the window: things you can delete first, things to keep last.
 -- mark picks the bag icon: check (have it or done it), x (gray or unused), question (not started, hidden or secret).
@@ -89,6 +92,8 @@ function ns.SlotKey(bag, slot) return bag * SLOT_KEY + slot end
 
 local records, byItem, bySlot, recPool = {}, {}, {}, {}
 local logQuests, logObjectives, objText, objQuest, specialItems = {}, {}, {}, {}, {}
+-- [questID] = the quest log header the quest sits under, else its map's name.
+local logZone = {}
 local questRequested, questResolved = {}, {}
 -- [itemID] = whether it can be a quest item at all; fixed per item, so most
 -- of your bag is skipped after one look.
@@ -101,15 +106,29 @@ function ns.IsPlain(v)
     return not (issecretvalue and issecretvalue(v))
 end
 
+local function MapZoneName(questID)
+    local mapID = GetQuestUiMapID and GetQuestUiMapID(questID)
+    if not mapID or mapID <= 0 then return end
+    local map = C_Map.GetMapInfo(mapID)
+    return map and map.name
+end
+
 local function ReadQuestLog()
     wipe(logQuests); wipe(logObjectives); wipe(objText); wipe(objQuest); wipe(specialItems)
+    wipe(logZone)
+    local header
     local i = 1
     while true do
         local info = C_QuestLog.GetInfo(i)
         if not info then break end
+        if info.isHeader then
+            header = info.title
+            if header == "" then header = nil end
+        end
         local questID = not info.isHeader and info.questID
         if questID and questID > 0 then
             logQuests[questID] = info
+            logZone[questID] = header or MapZoneName(questID)
             local objs = C_QuestLog.GetQuestObjectives(questID)
             if objs then
                 logObjectives[questID] = objs
@@ -257,6 +276,8 @@ local function Scan()
                 rec.icon, rec.count, rec.quality = info.iconFileID, info.stackCount, info.quality
                 rec.verdict, rec.questID, rec.questLevel, rec.questTitle = verdict, questID, level, title
                 rec.questText = title and (level and "[" .. level .. "] " .. title or title) or nil
+                -- A quest under a collapsed log header may be missing from logZone.
+                rec.zone = questID and (logZone[questID] or (verdict == "active" and MapZoneName(questID))) or nil
                 rec.objectives = inLog and logObjectives[questID] or nil
                 rec.ready = inLog and C_QuestLog.ReadyForTurnIn(questID) or nil
                 records[n] = rec
@@ -341,6 +362,86 @@ function ns.PickUp(rec)
     C_Container.PickupContainerItem(rec.bag, rec.slot)
 end
 
+-- Moves quest items between bags and bank one at a time. The queue holds
+-- copies of bag, slot and itemID because records are reused tables. The bank
+-- must be open before every single UseContainerItem: with it closed the call
+-- would use the item.
+local MOVE_DELAY, LOCKED_RETRIES, CURSOR_WAITS = 0.08, 3, 40
+local cursorWaits = 0
+
+-- The event flag and the banker interaction must both say the bank is open.
+local function BankIsOpen()
+    if not ns.bankOpen then return false end
+    local pim = C_PlayerInteractionManager
+    if BANKER and pim and pim.IsInteractingWithNpcOfType then
+        return pim.IsInteractingWithNpcOfType(BANKER) == true
+    end
+    return true
+end
+local moveBag, moveSlot, moveItem, moveTries = {}, {}, {}, {}
+local moveHead, moveTail = 1, 0
+
+local function Enqueue(bag, slot, itemID, tries)
+    moveTail = moveTail + 1
+    moveBag[moveTail], moveSlot[moveTail] = bag, slot
+    moveItem[moveTail], moveTries[moveTail] = itemID, tries
+end
+
+local function EndMove()
+    wipe(moveBag); wipe(moveSlot); wipe(moveItem); wipe(moveTries)
+    moveHead, moveTail, cursorWaits = 1, 0, 0
+    ns.moving = false
+    ns.MarkDirty()
+end
+
+local function MoveStep()
+    while moveHead <= moveTail do
+        if not BankIsOpen() or InCombatLockdown() then break end
+        -- An item on the cursor pauses the move rather than ending it.
+        if CursorHasItem() then
+            cursorWaits = cursorWaits + 1
+            if cursorWaits > CURSOR_WAITS then break end
+            C_Timer.After(0.25, MoveStep)
+            return
+        end
+        local bag, slot, itemID, tries = moveBag[moveHead], moveSlot[moveHead], moveItem[moveHead], moveTries[moveHead]
+        moveHead = moveHead + 1
+        local info = C_Container.GetContainerItemInfo(bag, slot)
+        if info and info.itemID == itemID then
+            if not info.isLocked then
+                if BANK_TYPE and not IS_BANK[bag] then
+                    C_Container.UseContainerItem(bag, slot, nil, BANK_TYPE)
+                else
+                    C_Container.UseContainerItem(bag, slot)
+                end
+                C_Timer.After(MOVE_DELAY, MoveStep)
+                return
+            elseif tries < LOCKED_RETRIES then
+                Enqueue(bag, slot, itemID, tries + 1)
+                C_Timer.After(MOVE_DELAY, MoveStep)
+                return
+            end
+        end
+    end
+    EndMove()
+end
+
+-- toBank moves the records in your bags to the bank; otherwise the records in
+-- the bank to your bags. Records on the other side are skipped.
+function ns.MoveRecords(recs, toBank)
+    if ns.moving or not BankIsOpen() or InCombatLockdown() then return end
+    local wantBag = toBank and true or false
+    for _, rec in ipairs(recs) do
+        if (rec.inBank == nil) == wantBag then
+            Enqueue(rec.bag, rec.slot, rec.itemID, 0)
+        end
+    end
+    if moveTail == 0 then return end
+    ns.moving = true
+    MoveStep()
+    ns.RefreshWindow()
+end
+
 local function OnItemTooltip(tooltip, data)
     if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
     if tooltip:IsForbidden() then return end
@@ -368,13 +469,16 @@ local QUEST_EVENTS = { QUEST_LOG_UPDATE = true, QUEST_TURNED_IN = true }
 
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, arg1)
-    if event == "MODIFIER_STATE_CHANGED" then
+    if event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_REGEN_DISABLED" then
+        ns.RefreshWindow()
+        return
+    elseif event == "MODIFIER_STATE_CHANGED" then
         if arg1 == "LALT" or arg1 == "RALT" then OnAltChanged() end
         return
     elseif event == "BANKFRAME_OPENED" or event == "BANKFRAME_CLOSED" then
         ns.bankOpen = event == "BANKFRAME_OPENED"
     elseif event == "PLAYER_REGEN_ENABLED" then
-        if bagsDirty or questsDirty then ns.MarkDirty() end
+        if bagsDirty or questsDirty then ns.MarkDirty() else ns.RefreshWindow() end
         return
     elseif event == "QUEST_DATA_LOAD_RESULT" then
         if not questRequested[arg1] then return end
@@ -393,7 +497,7 @@ for _, event in ipairs({
     "PLAYER_LOGIN", "BAG_UPDATE_DELAYED", "QUEST_LOG_UPDATE", "QUEST_TURNED_IN",
     "PLAYER_LEVEL_UP", "QUEST_DATA_LOAD_RESULT", "PLAYER_REGEN_ENABLED", "MODIFIER_STATE_CHANGED",
     "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYERBANKSLOTS_CHANGED", "BANK_TABS_CHANGED",
-    "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED",
+    "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED", "ZONE_CHANGED_NEW_AREA", "PLAYER_REGEN_DISABLED",
 }) do
     events:RegisterEvent(event)
 end
