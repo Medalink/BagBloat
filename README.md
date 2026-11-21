@@ -43,6 +43,12 @@ The window groups items as follows, in this order:
 - Safe to delete.
 - Hidden by you. This group starts folded.
 
+An item that starts a quest you have not picked up is listed under the zone
+where that quest is turned in, for the 160 classic quests the bundled table
+knows. The table is built from pfQuest data (MIT, see THIRD-PARTY.md) by
+`tools/gen_quest_zones.py`. Other quest-starting items stay under Not in your
+quest log.
+
 Click a group's header to fold or unfold it; it remembers which groups you
 folded. The search box at the top right filters the list by item name, quest
 title or zone, and shows every match while it has text. Escape clears the text,

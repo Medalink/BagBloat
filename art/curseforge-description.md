@@ -34,6 +34,7 @@ Type `/bloat` or `/bagbloat`, or click Bag Bloat in the addon compartment by the
 - Items are grouped in this order: Ready to turn in, your current zone, other zones A to Z, Not in your quest log, Safe to delete, and Hidden by you.
 - Ready to turn in holds items for quests in your log that you can turn in now.
 - Items are grouped by the zone of their quest. Not in your quest log holds items no quest in your log uses.
+- An item that starts a quest you have not picked up is listed under the zone where that quest is turned in, for 160 classic quests. That table is built from pfQuest data (MIT). Other quest-starting items stay under Not in your quest log.
 - Click a group's header to fold or unfold it. Hidden by you starts folded. The window remembers which groups you folded.
 - Type in the search box at the top right to filter by item name, quest title or zone. While it has text, every match shows. Escape clears the text, then closes the window.
 - Bank items stay listed from your last bank visit, marked (bank), so you can see them away from the bank.
