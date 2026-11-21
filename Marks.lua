@@ -49,6 +49,12 @@ local function Paint(btn, host, bag, slot, itemID)
     tex:Show()
 end
 
+-- The bag, slot and itemID a button last showed, for buttons we have painted.
+function ns.ButtonSlot(button)
+    local state = painted[button]
+    if state and state.bag then return state.bag, state.slot, state.itemID end
+end
+
 -- Runs out of combat only, so it reads each slot's current item rather
 -- than trusting the one the button showed at its last paint.
 function ns.RepaintMarks()

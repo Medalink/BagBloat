@@ -63,8 +63,14 @@ function ns.ShowRowTooltip(row)
     local rec = row.rec
     if not rec then return end
     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
-    GameTooltip:SetBagItem(rec.bag, rec.slot)
-    GameTooltip:AddLine("Click to pick up", 0.5, 0.5, 0.5)
+    if rec.bag then
+        GameTooltip:SetBagItem(rec.bag, rec.slot)
+        GameTooltip:AddLine("Click to pick up", 0.5, 0.5, 0.5)
+    elseif rec.link then
+        GameTooltip:SetHyperlink(rec.link)
+    else
+        GameTooltip:SetItemByID(rec.itemID)
+    end
     GameTooltip:Show()
 end
 
@@ -163,12 +169,6 @@ local function ZoneOrder(a, b)
     return a.title < b.title
 end
 
-local function MapZone()
-    local mapID = C_Map.GetBestMapForUnit("player")
-    local info = mapID and C_Map.GetMapInfo(mapID)
-    return info and info.name
-end
-
 local function BuildGroups(records)
     groupUsed = 0
     otherGroup, safeGroup = nil, nil
@@ -198,11 +198,7 @@ local function BuildGroups(records)
     end
 
     if #zoneList > 0 then
-        local real, zone, map = GetRealZoneText(), GetZoneText(), MapZone()
-        for _, g in ipairs(zoneList) do
-            local t = g.title
-            g.here = (t == real or t == zone or t == map) and t ~= ""
-        end
+        for _, g in ipairs(zoneList) do g.here = ns.IsHere(g.title) end
         sort(zoneList, ZoneOrder)
     end
     for _, g in ipairs(zoneList) do groups[#groups + 1] = g end
