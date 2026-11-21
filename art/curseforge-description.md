@@ -11,7 +11,7 @@ Each quest item gets one label. It shows in the item's tooltip, so it works with
 - **Hidden quest.** The item starts a quest that has no name, which is how the game hides a quest. Keep it.
 - **Secret quest.** The item belongs to a known secret quest chain, such as the Dawn Waker chain the Skyborne ring starts, the Stone Key, the Bloody Map, the Coldflame Saber, Lyn the Ignored, Ta'shkal or the Malignant Root. Bag Bloat always keeps these, whatever the game reports.
 - **Kept by you.** You chose Keep for the item in the window. It stays kept unless a quest in your log needs it.
-- **On quest.** A quest in your log needs the item.
+- **On quest.** A quest in your log needs the item. That includes an item the quest handed you to deliver.
 
 An item you hide from the window is labeled Hidden by you. It gets no tooltip line and no bag icon.
 

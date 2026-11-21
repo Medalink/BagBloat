@@ -1,7 +1,8 @@
 local _, ns = ...
 
 local C_Container, C_QuestLog, C_Item = C_Container, C_QuestLog, C_Item
-local ipairs, wipe, sort, find, format = ipairs, wipe, table.sort, string.find, string.format
+local ipairs, pairs, wipe, sort, find, format = ipairs, pairs, wipe, table.sort, string.find, string.format
+local gmatch, gsub, lower = string.gmatch, string.gsub, string.lower
 
 -- [questID] = the area a quest-starting item belongs to, from QuestZones.lua.
 local QUEST_AREA = ns.QUEST_AREA or {}
@@ -105,6 +106,9 @@ function ns.SlotKey(bag, slot) return bag * SLOT_KEY + slot end
 
 local records, byItem, bySlot, recPool = {}, {}, {}, {}
 local logQuests, logObjectives, objText, objQuest, specialItems = {}, {}, {}, {}, {}
+-- For each log quest with no item objective (a delivery, say): the words of
+-- its summary line, and the quest.
+local summaryWords, summaryQuest = {}, {}
 -- [questID] = the quest log header the quest sits under, else its map's name.
 local logZone = {}
 local questRequested, questResolved = {}, {}
@@ -122,7 +126,8 @@ end
 
 -- Saved variables are not loaded when this file runs, so the tables are made on use.
 -- keep and hide are [itemID] = true; bank and warbank are the quest items the
--- last visit saw in the character tabs and in the account tabs.
+-- last visit saw in the character tabs and in the account tabs; given is
+-- [itemID] = the quest that handed you the item when you accepted it.
 function ns.CharDB()
     local db = BagBloatCharDB
     if not db then
@@ -131,6 +136,7 @@ function ns.CharDB()
     end
     db.keep = db.keep or {}
     db.hide = db.hide or {}
+    db.given = db.given or {}
     db.bank = db.bank or {}
     -- Before warbank existed, bank held the account tabs' items too.
     if not db.warbank then
@@ -191,9 +197,24 @@ local function MapZoneName(questID)
     return map and map.name
 end
 
+-- Words too common to tie an item to a quest.
+local STOP_WORDS = { from = true, with = true, your = true, their = true, that = true, this = true }
+
+-- Adds the words of text to set: four letters or more, lower case, without a
+-- plural "s", so "Blades" and "blade" meet.
+local function AddWords(set, text)
+    for word in gmatch(lower(text), "%a%a%a%a+") do
+        if not STOP_WORDS[word] then
+            local stem = gsub(word, "s$", "")
+            set[stem] = true
+        end
+    end
+    return set
+end
+
 local function ReadQuestLog()
     wipe(logQuests); wipe(logObjectives); wipe(objText); wipe(objQuest); wipe(specialItems)
-    wipe(logZone)
+    wipe(logZone); wipe(summaryWords); wipe(summaryQuest)
     local header
     local i = 1
     while true do
@@ -208,13 +229,22 @@ local function ReadQuestLog()
             logQuests[questID] = info
             logZone[questID] = header or MapZoneName(questID)
             local objs = C_QuestLog.GetQuestObjectives(questID)
+            local wantsItems = false
             if objs then
                 logObjectives[questID] = objs
                 for _, o in ipairs(objs) do
+                    if o.type == "item" then wantsItems = true end
                     if o.text and o.text ~= "" then
                         local n = #objText + 1
                         objText[n], objQuest[n] = o.text, questID
                     end
+                end
+            end
+            if not wantsItems and GetQuestLogQuestText then
+                local _, summary = GetQuestLogQuestText(i)
+                if summary and summary ~= "" then
+                    local n = #summaryQuest + 1
+                    summaryWords[n], summaryQuest[n] = AddWords({}, summary), questID
                 end
             end
             local link = GetQuestLogSpecialItemInfo and GetQuestLogSpecialItemInfo(i)
@@ -244,11 +274,28 @@ local function IsGray(level)
     return level - UnitEffectiveLevel("player") < -UnitQuestTrivialLevelRange("player")
 end
 
-local function OwnerOfObjectiveItem(itemID, name)
+-- The quest in your log that needs an item which starts no quest itself, and
+-- how it was found. A quest can hand you an item to deliver that none of its
+-- objectives name, so the last two ways cover those: the accept that brought
+-- the item, then a word the item's name shares with the quest's summary.
+local function OwnerInLog(itemID, name)
     local owner = specialItems[itemID]
-    if owner or not name or name == "" then return owner end
-    for i = 1, #objText do
-        if find(objText[i], name, 1, true) then return objQuest[i] end
+    if owner then return owner, "the quest's item button" end
+    local named = name and name ~= ""
+    if named then
+        for i = 1, #objText do
+            if find(objText[i], name, 1, true) then return objQuest[i], "objective text" end
+        end
+    end
+    owner = ns.CharDB().given[itemID]
+    if owner and (logQuests[owner] or C_QuestLog.IsOnQuest(owner)) then return owner, "came with the quest" end
+    if named and #summaryQuest > 0 then
+        for word in gmatch(lower(name), "%a%a%a%a+") do
+            local stem = gsub(word, "s$", "")
+            for i = 1, #summaryQuest do
+                if summaryWords[i][stem] then return summaryQuest[i], "quest summary says " .. stem end
+            end
+        end
     end
 end
 
@@ -286,7 +333,7 @@ local function ClassifyQuest(itemID, itemName, questID, isActive, isQuestItem)
     end
     if not isQuestItem then return nil end
 
-    local owner = OwnerOfObjectiveItem(itemID, itemName)
+    local owner = OwnerInLog(itemID, itemName)
     if owner then return "active", owner end
     return "orphan"
 end
@@ -734,7 +781,63 @@ local function OnAltChanged()
     end
 end
 
-local QUEST_EVENTS = { QUEST_LOG_UPDATE = true, QUEST_TURNED_IN = true }
+local QUEST_EVENTS = { QUEST_LOG_UPDATE = true, QUEST_TURNED_IN = true, QUEST_REMOVED = true }
+
+-- Nothing the game reports ties a quest to an item it hands you on accept.
+-- The accept does: a quest item that was not in your bags when the quest was
+-- offered, and is there once you accept, came with it.
+local OFFER_LIFE = 300
+-- [itemID] = true for what the bags held at the last offer, and when that was.
+local offered, offeredAt = {}, nil
+-- Quest IDs accepted since that offer.
+local accepted = {}
+
+local function TieGiven()
+    local questID = accepted[1]
+    if not questID or InCombatLockdown() then return end
+    wipe(accepted)
+    offeredAt = nil
+    local given, tied = ns.CharDB().given, false
+    for _, bag in ipairs(BAGS) do
+        for slot = 1, C_Container.GetContainerNumSlots(bag) do
+            local itemID = C_Container.GetContainerItemID(bag, slot)
+            if itemID and not offered[itemID] and not SECRET_ITEMS[itemID] then
+                local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(itemID)
+                if classID == QUEST_ITEM_CLASS then
+                    local qi = C_Container.GetContainerItemQuestInfo(bag, slot)
+                    local starts = qi and qi.questID
+                    if not (starts and starts > 0) then
+                        given[itemID] = questID
+                        tied = true
+                    end
+                end
+            end
+        end
+    end
+    if tied then ns.MarkDirty(true) end
+end
+
+local function OnQuestOffered()
+    TieGiven()
+    offeredAt = nil
+    if InCombatLockdown() then return end
+    wipe(offered)
+    for _, bag in ipairs(BAGS) do
+        for slot = 1, C_Container.GetContainerNumSlots(bag) do
+            local itemID = C_Container.GetContainerItemID(bag, slot)
+            if itemID then offered[itemID] = true end
+        end
+    end
+    offeredAt = GetTime()
+end
+
+-- The quest is gone from the log, so nothing it gave you is tied to it now.
+local function ForgetGiven(questID)
+    local given = ns.CharDB().given
+    for itemID, owner in pairs(given) do
+        if owner == questID then given[itemID] = nil end
+    end
+end
 
 -- A scan made outside the queued refresh repaints the bag icons itself.
 local function Fresh()
@@ -814,8 +917,22 @@ local function ScanBank()
 end
 
 local events = CreateFrame("Frame")
-events:SetScript("OnEvent", function(_, event, arg1)
-    if event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_REGEN_DISABLED" then
+events:SetScript("OnEvent", function(_, event, arg1, arg2)
+    if event == "QUEST_DETAIL" then
+        OnQuestOffered()
+        return
+    elseif event == "QUEST_ACCEPTED" then
+        -- The quest ID comes alone, or after the log index on older clients.
+        local questID = arg2 or arg1
+        if offeredAt and GetTime() - offeredAt <= OFFER_LIFE and type(questID) == "number" then
+            accepted[#accepted + 1] = questID
+            -- The item can land a moment after the accept.
+            C_Timer.After(0.5, TieGiven)
+        end
+        return
+    elseif event == "QUEST_TURNED_IN" or event == "QUEST_REMOVED" then
+        ForgetGiven(arg1)
+    elseif event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_REGEN_DISABLED" then
         ns.RefreshWindow()
         if event == "ZONE_CHANGED_NEW_AREA" then C_Timer.After(1, ZoneLine) end
         return
@@ -836,6 +953,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
             C_Timer.After(BANK_SETTLE + 0.1, ScanBank)
         end
     elseif event == "PLAYER_REGEN_ENABLED" then
+        TieGiven()
         if bagsDirty or questsDirty then ns.MarkDirty() else ns.RefreshWindow() end
         BagsFullLine()
         return
@@ -857,7 +975,7 @@ for _, event in ipairs({
     "PLAYER_LEVEL_UP", "QUEST_DATA_LOAD_RESULT", "PLAYER_REGEN_ENABLED", "MODIFIER_STATE_CHANGED",
     "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYERBANKSLOTS_CHANGED", "BANK_TABS_CHANGED",
     "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED", "ZONE_CHANGED_NEW_AREA", "PLAYER_REGEN_DISABLED",
-    "PLAYER_ENTERING_WORLD",
+    "PLAYER_ENTERING_WORLD", "QUEST_DETAIL", "QUEST_ACCEPTED", "QUEST_REMOVED",
 }) do
     events:RegisterEvent(event)
 end
@@ -935,11 +1053,13 @@ function ns.Explain(bag, slot, itemID)
     end
 
     local cdb = ns.CharDB()
-    local owner = OwnerOfObjectiveItem(itemID, name)
+    local owner, how = OwnerInLog(itemID, name)
     add("in secret list", SECRET_ITEMS[itemID] == true)
     add("kept by you", cdb.keep[itemID] == true)
     add("hidden by you", cdb.hide[itemID] == true)
-    add("objective owner", owner and (owner .. " " .. tostring(QuestTitle(owner))) or "none")
+    add("came with quest", cdb.given[itemID] or "none")
+    add("log quests with no item objective", #summaryQuest)
+    add("owner in log", owner and (owner .. " " .. tostring(QuestTitle(owner)) .. " (" .. how .. ")") or "none")
     local verdict, ownerID = ClassifyQuest(itemID, name, questID, isActive, isQuestItem)
     if verdict then verdict = Override(verdict, itemID, cdb.keep, cdb.hide) end
     add("final verdict", verdict and VERDICTS[verdict].label or "not a quest item")
