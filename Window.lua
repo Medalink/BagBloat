@@ -1,13 +1,16 @@
 local _, ns = ...
 
 local ipairs, wipe, sort, format = ipairs, wipe, table.sort, string.format
+local find, lower = string.find, string.lower
 local floor, max, min = math.floor, math.max, math.min
 
 local WIDTH, HEIGHT, ROW_H, ICON = 380, 440, 36, 28
 local MIN_W, MIN_H, MAX_W, MAX_H = 320, 260, 900, 1200
-local HEADER_H, BUTTON_W, BUTTON_H = 26, 38, 20
+local HEADER_H, BUTTON_W, BUTTON_H, DELETE_W = 26, 38, 20, 48
+local SEARCH_W, SEARCH_H = 120, 18
+local DISARM_AFTER, DELETE_GAP = 10, 0.3
 local BAR_W, THUMB_MIN, GRIP = 4, 24, 14
-local frame, scroll, bar, content, summary, empty
+local frame, scroll, bar, content, summary, empty, search
 local rows, isRow, headers = {}, {}, {}
 local contentH, scrollRange = 1, 0
 
@@ -60,23 +63,36 @@ function ns.IsRow(f)
 end
 
 function ns.ShowRowTooltip(row)
+    if not row.rec then return end
+    -- A rescan here rebinds the rows, so the record is read after it.
+    local _, items = ns.Get()
     local rec = row.rec
     if not rec then return end
     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
     if rec.bag then
         GameTooltip:SetBagItem(rec.bag, rec.slot)
         GameTooltip:AddLine("Click to pick up", 0.5, 0.5, 0.5)
-    elseif rec.link then
-        GameTooltip:SetHyperlink(rec.link)
     else
-        GameTooltip:SetItemByID(rec.itemID)
+        if rec.link then
+            GameTooltip:SetHyperlink(rec.link)
+        else
+            GameTooltip:SetItemByID(rec.itemID)
+        end
+        -- The game's item tooltip only gets a verdict line for items in your bags.
+        if not items[rec.itemID] then ns.AddVerdictLines(GameTooltip, rec) end
+        GameTooltip:AddLine("In your bank, seen on your last visit", 0.5, 0.5, 0.5)
     end
+    GameTooltip:AddLine("Right-click for options", 0.5, 0.5, 0.5)
     GameTooltip:Show()
 end
 
-local function RowOnClick(row)
+local function RowOnClick(row, mouse)
     local rec = row.rec
     if not rec then return end
+    if mouse == "RightButton" then
+        ns.OpenMenu(rec)
+        return
+    end
     if IsModifiedClick() and rec.link and HandleModifiedItemClick(rec.link) then return end
     ns.PickUp(rec)
 end
@@ -126,13 +142,14 @@ local function CreateRow()
     Tint(row.quest, C.muted)
     ApplyFont(row.quest, 12)
 
+    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     row:SetScript("OnEnter", ns.ShowRowTooltip)
     row:SetScript("OnLeave", GameTooltip_Hide)
     row:SetScript("OnClick", RowOnClick)
     return row
 end
 
-local function FillRow(row, rec)
+local function FillRow(row, rec, kind)
     row.rec = rec
     row.icon:SetTexture(rec.icon)
     row.count:SetText(rec.count and rec.count > 1 and rec.count or "")
@@ -141,15 +158,31 @@ local function FillRow(row, rec)
     local r, g, b = C_Item.GetItemQualityColor(rec.quality or 1)
     row.name:SetTextColor(r or 1, g or 1, b or 1)
     local v = ns.VERDICTS[rec.verdict]
-    row.status:SetText(v.label)
-    row.status:SetTextColor(v.r, v.g, v.b)
+    if kind == "ready" then
+        row.status:SetText("Ready to turn in")
+        Tint(row.status, C.success)
+    else
+        row.status:SetText(v.label)
+        row.status:SetTextColor(v.r, v.g, v.b)
+    end
     row.quest:SetText(rec.questText or "")
+end
+
+-- The search box text, lowercased; empty means no filter.
+local query = ""
+
+local function Matches(rec)
+    if query == "" then return true end
+    return find(lower(rec.name), query, 1, true)
+        or (rec.questTitle and find(lower(rec.questTitle), query, 1, true))
+        or (rec.zone and find(lower(rec.zone), query, 1, true))
 end
 
 -- Groups. The tables are pooled: a refresh reuses them and builds no new ones.
 local groupPool, groupUsed = {}, 0
 local zoneGroup, zoneList, groups = {}, {}, {}
-local otherGroup, safeGroup
+local readyGroup, otherGroup, safeGroup, hiddenGroup
+local listed = 0
 
 local function NewGroup(title, kind)
     groupUsed = groupUsed + 1
@@ -169,31 +202,44 @@ local function ZoneOrder(a, b)
     return a.title < b.title
 end
 
+-- The first group that fits: hidden, ready, safe, its zone, then the rest.
+local function PickGroup(rec)
+    if rec.verdict == "ignored" then
+        hiddenGroup = hiddenGroup or NewGroup("Hidden by you", "hidden")
+        return hiddenGroup
+    elseif rec.ready then
+        readyGroup = readyGroup or NewGroup("Ready to turn in", "ready")
+        return readyGroup
+    elseif ns.VERDICTS[rec.verdict].safe then
+        safeGroup = safeGroup or NewGroup("Safe to delete", "safe")
+        return safeGroup
+    elseif rec.zone then
+        local g = zoneGroup[rec.zone]
+        if not g then
+            g = NewGroup(rec.zone, "zone")
+            zoneGroup[rec.zone] = g
+            zoneList[#zoneList + 1] = g
+        end
+        return g
+    end
+    otherGroup = otherGroup or NewGroup("Not in your quest log", "other")
+    return otherGroup
+end
+
 local function BuildGroups(records)
-    groupUsed = 0
-    otherGroup, safeGroup = nil, nil
+    groupUsed, listed = 0, 0
+    readyGroup, otherGroup, safeGroup, hiddenGroup = nil, nil, nil, nil
     wipe(zoneGroup); wipe(zoneList); wipe(groups)
     for _, rec in ipairs(records) do
-        local g
-        if rec.zone then
-            g = zoneGroup[rec.zone]
-            if not g then
-                g = NewGroup(rec.zone, "zone")
-                zoneGroup[rec.zone] = g
-                zoneList[#zoneList + 1] = g
+        if Matches(rec) then
+            local g = PickGroup(rec)
+            g.recs[#g.recs + 1] = rec
+            if rec.inBank then
+                g.bankCount = g.bankCount + 1
+            else
+                g.bagCount = g.bagCount + 1
             end
-        elseif ns.VERDICTS[rec.verdict].safe then
-            safeGroup = safeGroup or NewGroup("Safe to delete", "safe")
-            g = safeGroup
-        else
-            otherGroup = otherGroup or NewGroup("Not in your quest log", "other")
-            g = otherGroup
-        end
-        g.recs[#g.recs + 1] = rec
-        if rec.inBank then
-            g.bankCount = g.bankCount + 1
-        else
-            g.bagCount = g.bagCount + 1
+            listed = listed + 1
         end
     end
 
@@ -201,9 +247,27 @@ local function BuildGroups(records)
         for _, g in ipairs(zoneList) do g.here = ns.IsHere(g.title) end
         sort(zoneList, ZoneOrder)
     end
+    if readyGroup then groups[#groups + 1] = readyGroup end
     for _, g in ipairs(zoneList) do groups[#groups + 1] = g end
     if otherGroup then groups[#groups + 1] = otherGroup end
     if safeGroup then groups[#groups + 1] = safeGroup end
+    if hiddenGroup then groups[#groups + 1] = hiddenGroup end
+end
+
+-- Hidden items start folded; searching shows every match.
+local function IsCollapsed(g)
+    if query ~= "" then return false end
+    local state = ns.Collapsed()[g.title]
+    if state == nil then return g.kind == "hidden" end
+    return state
+end
+
+local function HeaderOnClick(h)
+    local g = h.group
+    if not g or query ~= "" then return end
+    local state = ns.Collapsed()
+    state[g.title] = not IsCollapsed(g)
+    ns.RefreshWindow()
 end
 
 local function ButtonOnClick(button)
@@ -238,23 +302,106 @@ local function FillButton(button, g, count)
     UI.SetEnabled(button, reason == nil)
 end
 
+-- The Delete button. The first click arms it, each click after that deletes
+-- one item, and it disarms 10 s after the last click or when the window hides.
+local armed, armedAt, lastDelete, deletedOne, disarmQueued = false, 0, 0, false, false
+
+local function Disarm()
+    armed, deletedOne = false, false
+end
+
+local function DisarmCheck()
+    disarmQueued = false
+    if not armed then return end
+    local left = DISARM_AFTER - (GetTime() - armedAt)
+    if left > 0.05 then
+        disarmQueued = true
+        C_Timer.After(left, DisarmCheck)
+    else
+        Disarm()
+        ns.RefreshWindow()
+    end
+end
+
+local function FillDelete(button, g)
+    button.group = g
+    local reason, nextRec
+    if InCombatLockdown() or UnitAffectingCombat("player") then
+        reason = "In combat"
+    else
+        nextRec = ns.NextDeletable(g.recs)
+        if not nextRec then reason = "Nothing in your bags to delete" end
+    end
+    if reason then Disarm() end
+    button.label:SetText(armed and "Sure?" or "Delete")
+    if reason then
+        button.tip = reason
+    elseif not armed then
+        button.tip = "Click to arm. Each click after that deletes one item."
+    elseif deletedOne then
+        button.tip = "Deletes " .. (nextRec.name ~= "" and nextRec.name or nextRec.link or "?")
+    else
+        button.tip = "Click again to delete one item per click"
+    end
+    UI.SetEnabled(button, reason == nil)
+    if GameTooltip:IsShown() and GameTooltip:GetOwner() == button then UI.ShowTip(button) end
+end
+
+-- DeleteCursorItem needs a hardware event, so the delete happens right here.
+local function DeleteOnClick(button)
+    local now = GetTime()
+    armedAt = now
+    if not disarmQueued then
+        disarmQueued = true
+        C_Timer.After(DISARM_AFTER, DisarmCheck)
+    end
+    if not armed then
+        armed, deletedOne = true, false
+        FillDelete(button, button.group)
+        return
+    end
+    -- A second click before the bags update would hit the item just deleted.
+    if now - lastDelete < DELETE_GAP then return end
+    local g = button.group
+    if g and ns.DeleteRecord(ns.NextDeletable(g.recs)) then
+        lastDelete, deletedOne = now, true
+    end
+end
+
 local function CreateHeader()
-    local h = CreateFrame("Frame", nil, content)
+    local h = CreateFrame("Button", nil, content)
     h:SetHeight(HEADER_H)
+    h:SetScript("OnClick", HeaderOnClick)
 
     local bg = h:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     Fill(bg, C.surface)
+
+    local hl = h:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    Fill(hl, C.surface)
 
     local line = Solid(h, "BORDER", C.divider)
     line:SetPoint("BOTTOMLEFT")
     line:SetPoint("BOTTOMRIGHT")
     line:SetHeight(1)
 
+    -- A plus when folded, a minus when open, from 1px bars.
+    h.signH = Solid(h, "OVERLAY", C.faint)
+    h.signH:SetSize(9, 1)
+    h.signH:SetPoint("CENTER", h, "LEFT", 12, 0)
+    h.signV = Solid(h, "OVERLAY", C.faint)
+    h.signV:SetSize(1, 9)
+    h.signV:SetPoint("CENTER", h, "LEFT", 12, 0)
+
     h.take = CreateButton(h, "Take", false)
     h.take:SetPoint("RIGHT", -4, 0)
     h.bank = CreateButton(h, "Bank", true)
     h.bank:SetPoint("RIGHT", h.take, "LEFT", -3, 0)
+    h.delete = UI.Button(h, "Delete", DELETE_W, BUTTON_H)
+    h.delete:SetPoint("RIGHT", -4, 0)
+    UI.SetTone(h.delete, C.danger)
+    h.delete:SetScript("OnClick", DeleteOnClick)
 
     h.count = h:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     h.count:SetJustifyH("RIGHT")
@@ -262,7 +409,7 @@ local function CreateHeader()
     ApplyFont(h.count, 12)
 
     h.title = h:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    h.title:SetPoint("LEFT", 6, 0)
+    h.title:SetPoint("LEFT", 22, 0)
     h.title:SetPoint("RIGHT", h.count, "LEFT", -6, 0)
     h.title:SetJustifyH("LEFT")
     h.title:SetWordWrap(false)
@@ -271,7 +418,9 @@ local function CreateHeader()
     return h
 end
 
-local function FillHeader(h, g)
+local function FillHeader(h, g, collapsed)
+    h.group = g
+    h.signV:SetShown(collapsed)
     h.title:SetText(g.here and g.title .. HERE_TAG or g.title)
     local n = #g.recs
     local word = n == 1 and "item" or "items"
@@ -281,11 +430,19 @@ local function FillHeader(h, g)
         h.count:SetFormattedText("%d %s", n, word)
     end
     h.count:ClearAllPoints()
-    if g.kind == "safe" then
+    if g.kind == "hidden" then
         h.bank:Hide()
         h.take:Hide()
+        h.delete:Hide()
         h.count:SetPoint("RIGHT", h, "RIGHT", -6, 0)
+    elseif g.kind == "safe" then
+        h.bank:Hide()
+        h.take:Hide()
+        FillDelete(h.delete, g)
+        h.delete:Show()
+        h.count:SetPoint("RIGHT", h.delete, "LEFT", -6, 0)
     else
+        h.delete:Hide()
         FillButton(h.bank, g, g.bagCount)
         FillButton(h.take, g, g.bankCount)
         h.bank:Show()
@@ -294,13 +451,13 @@ local function FillHeader(h, g)
     end
 end
 
-local function ShowRow(n, rec, y)
+local function ShowRow(n, rec, y, kind)
     local row = rows[n]
     if not row then
         row = CreateRow()
         rows[n] = row
     end
-    FillRow(row, rec)
+    FillRow(row, rec, kind)
     Place(row, y)
     row:Show()
     return y + ROW_H
@@ -341,24 +498,32 @@ function ns.RefreshWindow()
                 h = CreateHeader()
                 headers[headN] = h
             end
-            FillHeader(h, g)
+            local collapsed = IsCollapsed(g)
+            FillHeader(h, g, collapsed)
             Place(h, y)
             h:Show()
             y = y + HEADER_H
-            for _, rec in ipairs(g.recs) do
+            if not collapsed then
+                for _, rec in ipairs(g.recs) do
+                    rowN = rowN + 1
+                    y = ShowRow(rowN, rec, y, g.kind)
+                end
+            end
+        end
+    else
+        listed = 0
+        for _, rec in ipairs(records) do
+            if Matches(rec) then
+                listed = listed + 1
                 rowN = rowN + 1
                 y = ShowRow(rowN, rec, y)
             end
         end
-    else
-        for _, rec in ipairs(records) do
-            rowN = rowN + 1
-            y = ShowRow(rowN, rec, y)
-        end
     end
     for i = headN + 1, #headers do
-        headers[i].bank.group, headers[i].take.group = nil, nil
-        headers[i]:Hide()
+        local h = headers[i]
+        h.group, h.bank.group, h.take.group, h.delete.group = nil, nil, nil, nil
+        h:Hide()
     end
     for i = rowN + 1, #rows do
         rows[i].rec = nil
@@ -367,7 +532,10 @@ function ns.RefreshWindow()
     contentH = max(y, 1)
     content:SetHeight(contentH)
     UpdateScroll()
-    empty:SetShown(#records == 0)
+    empty:SetShown(listed == 0)
+    if listed == 0 then
+        empty:SetText(#records == 0 and "No quest items in your bags." or "Nothing matches.")
+    end
     if #records == 0 then
         summary:SetText("")
     elseif ns.safeCount == 0 then
@@ -525,6 +693,64 @@ local function OnWheel(_, delta)
     scroll:SetVerticalScroll(Clamp(scroll:GetVerticalScroll() - delta * ROW_H, 0, scrollRange))
 end
 
+local function PaintSearch()
+    Skin(search, C.surface, search.focus and C.text or C.border)
+    search.hint:SetShown(not search.focus and search:GetText() == "")
+end
+
+local function SearchOnChanged(box)
+    PaintSearch()
+    local text = lower(box:GetText())
+    if text == query then return end
+    query = text
+    ns.RefreshWindow()
+end
+
+local function SearchOnFocus(box, focus)
+    box.focus = focus
+    PaintSearch()
+end
+
+-- Escape clears the text and the focus; with no text it only drops the focus,
+-- so the next Escape closes the window.
+local function SearchOnEscape(box)
+    if box:GetText() ~= "" then box:SetText("") end
+    box:ClearFocus()
+end
+
+local function CreateSearch()
+    search = CreateFrame("EditBox", nil, frame, "BackdropTemplate")
+    search:SetSize(SEARCH_W, SEARCH_H)
+    search:SetPoint("TOPRIGHT", -12, -27)
+    search:SetFontObject("GameFontHighlightSmall")
+    search:SetTextColor(C.text[1], C.text[2], C.text[3], C.text[4])
+    search:SetAutoFocus(false)
+    search:SetMaxLetters(40)
+    search:SetTextInsets(6, 6, 0, 0)
+    ApplyFont(search, 12)
+    UI.Panel(search, C.surface, C.border)
+
+    search.hint = search:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    search.hint:SetPoint("LEFT", 6, 0)
+    search.hint:SetText("Search")
+    Tint(search.hint, C.faint)
+    ApplyFont(search.hint, 12)
+    PaintSearch()
+
+    search:SetScript("OnTextChanged", SearchOnChanged)
+    search:SetScript("OnEditFocusGained", function(box) SearchOnFocus(box, true) end)
+    search:SetScript("OnEditFocusLost", function(box) SearchOnFocus(box, false) end)
+    search:SetScript("OnEscapePressed", SearchOnEscape)
+    search:SetScript("OnEnterPressed", search.ClearFocus)
+end
+
+local function OnWindowHide()
+    Disarm()
+    search:SetText("")
+    search:ClearFocus()
+    ns.CloseMenu()
+end
+
 local function CreateWindow()
     frame = CreateFrame("Frame", "BagBloatFrame", UIParent, "BackdropTemplate")
     RestoreSize()
@@ -558,9 +784,11 @@ local function CreateWindow()
     Tint(title, C.text)
     ApplyFont(title, 17)
 
+    CreateSearch()
+
     summary = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     summary:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
-    summary:SetPoint("RIGHT", frame, "RIGHT", -12, 0)
+    summary:SetPoint("RIGHT", search, "LEFT", -8, 0)
     summary:SetJustifyH("LEFT")
     summary:SetWordWrap(false)
     Tint(summary, C.muted)
@@ -597,6 +825,7 @@ local function CreateWindow()
     ApplyFont(empty, 13)
 
     frame:SetScript("OnShow", ns.RefreshWindow)
+    frame:SetScript("OnHide", OnWindowHide)
     tinsert(UISpecialFrames, "BagBloatFrame")
     frame:Hide()
 end
