@@ -523,6 +523,7 @@ function ns.RefreshWindow()
             end
         end
     else
+        DisarmDelete()
         listed = 0
         for _, rec in ipairs(records) do
             if Matches(rec) then

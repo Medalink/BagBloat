@@ -132,7 +132,11 @@ function ns.CharDB()
     db.keep = db.keep or {}
     db.hide = db.hide or {}
     db.bank = db.bank or {}
-    db.warbank = db.warbank or {}
+    -- Before warbank existed, bank held the account tabs' items too.
+    if not db.warbank then
+        db.warbank = {}
+        wipe(db.bank)
+    end
     return db
 end
 
@@ -668,11 +672,21 @@ function ns.DeleteRecord(rec)
     if kind == "item" and id == itemID then
         DeleteCursorItem()
         if CursorHasItem() then
-            -- The game refused: put the item back and stop offering it.
+            -- Either the game refused or the cursor has not caught up yet.
+            -- The slot tells which a moment later.
             ClearCursor()
-            refused[itemID] = true
-            print("Bag Bloat: the game would not delete " .. (link or itemID))
-            return false
+            C_Timer.After(0.5, function()
+                local now = C_Container.GetContainerItemInfo(bag, slot)
+                if now and now.itemID == itemID then
+                    refused[itemID] = true
+                    print("Bag Bloat: the game would not delete " .. (link or itemID))
+                else
+                    print("Bag Bloat: deleted " .. (link or itemID))
+                end
+                ns.MarkDirty()
+                ns.RefreshWindow()
+            end)
+            return true
         end
         print("Bag Bloat: deleted " .. (link or itemID))
         ns.MarkDirty()
