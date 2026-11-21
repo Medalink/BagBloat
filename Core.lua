@@ -2,7 +2,7 @@ local _, ns = ...
 
 local C_Container, C_QuestLog, C_Item = C_Container, C_QuestLog, C_Item
 local ipairs, pairs, wipe, sort, find, format = ipairs, pairs, wipe, table.sort, string.find, string.format
-local gmatch, gsub, lower = string.gmatch, string.gsub, string.lower
+local gmatch, gsub, lower, match = string.gmatch, string.gsub, string.lower, string.match
 
 -- [questID] = the area a quest-starting item belongs to, from QuestZones.lua.
 local QUEST_AREA = ns.QUEST_AREA or {}
@@ -200,21 +200,29 @@ end
 -- Words too common to tie an item to a quest.
 local STOP_WORDS = { from = true, with = true, your = true, their = true, that = true, this = true }
 
--- Adds the words of text to set: four letters or more, lower case, without a
--- plural "s", so "Blades" and "blade" meet.
-local function AddWords(set, text)
+-- Files the words of a quest's summary under slot n: four letters or more,
+-- lower case, without a plural "s", so "Blades" and "blade" meet. The word
+-- tables are reused from one quest log read to the next.
+local function AddSummary(n, questID, text)
+    local set = summaryWords[n]
+    if set then
+        wipe(set)
+    else
+        set = {}
+        summaryWords[n] = set
+    end
     for word in gmatch(lower(text), "%a%a%a%a+") do
         if not STOP_WORDS[word] then
             local stem = gsub(word, "s$", "")
             set[stem] = true
         end
     end
-    return set
+    summaryQuest[n] = questID
 end
 
 local function ReadQuestLog()
     wipe(logQuests); wipe(logObjectives); wipe(objText); wipe(objQuest); wipe(specialItems)
-    wipe(logZone); wipe(summaryWords); wipe(summaryQuest)
+    wipe(logZone); wipe(summaryQuest)
     local header
     local i = 1
     while true do
@@ -242,10 +250,7 @@ local function ReadQuestLog()
             end
             if not wantsItems and GetQuestLogQuestText then
                 local _, summary = GetQuestLogQuestText(i)
-                if summary and summary ~= "" then
-                    local n = #summaryQuest + 1
-                    summaryWords[n], summaryQuest[n] = AddWords({}, summary), questID
-                end
+                if summary and summary ~= "" then AddSummary(#summaryQuest + 1, questID, summary) end
             end
             local link = GetQuestLogSpecialItemInfo and GetQuestLogSpecialItemInfo(i)
             if link then
@@ -277,7 +282,7 @@ end
 -- The quest in your log that needs an item which starts no quest itself, and
 -- how it was found. A quest can hand you an item to deliver that none of its
 -- objectives name, so the last two ways cover those: the accept that brought
--- the item, then a word the item's name shares with the quest's summary.
+-- the item, then the quest's summary using the last word of the item's name.
 local function OwnerInLog(itemID, name)
     local owner = specialItems[itemID]
     if owner then return owner, "the quest's item button" end
@@ -289,12 +294,13 @@ local function OwnerInLog(itemID, name)
     end
     owner = ns.CharDB().given[itemID]
     if owner and (logQuests[owner] or C_QuestLog.IsOnQuest(owner)) then return owner, "came with the quest" end
-    if named and #summaryQuest > 0 then
-        for word in gmatch(lower(name), "%a%a%a%a+") do
-            local stem = gsub(word, "s$", "")
-            for i = 1, #summaryQuest do
-                if summaryWords[i][stem] then return summaryQuest[i], "quest summary says " .. stem end
-            end
+    -- Only the name's last word counts ("Blade" in "Beguiler's Blade"): any
+    -- word would tie "Stormwind Orders" to every quest that names Stormwind.
+    local last = named and #summaryQuest > 0 and match(lower(name), "(%a%a%a%a+)%A*$")
+    if last then
+        local stem = gsub(last, "s$", "")
+        for i = 1, #summaryQuest do
+            if summaryWords[i][stem] then return summaryQuest[i], "quest summary says " .. stem end
         end
     end
 end
@@ -786,17 +792,20 @@ local QUEST_EVENTS = { QUEST_LOG_UPDATE = true, QUEST_TURNED_IN = true, QUEST_RE
 -- Nothing the game reports ties a quest to an item it hands you on accept.
 -- The accept does: a quest item that was not in your bags when the quest was
 -- offered, and is there once you accept, came with it.
-local OFFER_LIFE = 300
+-- An offer is good for two minutes, and an accept for ten seconds: after a
+-- fight that held the tie up, what is new in the bags may be loot.
+local OFFER_LIFE, ACCEPT_LIFE = 120, 10
 -- [itemID] = true for what the bags held at the last offer, and when that was.
 local offered, offeredAt = {}, nil
--- Quest IDs accepted since that offer.
-local accepted = {}
+-- Quest IDs accepted since that offer, and when the first one was.
+local accepted, acceptedAt = {}, 0
 
 local function TieGiven()
     local questID = accepted[1]
     if not questID or InCombatLockdown() then return end
     wipe(accepted)
     offeredAt = nil
+    if GetTime() - acceptedAt > ACCEPT_LIFE then return end
     local given, tied = ns.CharDB().given, false
     for _, bag in ipairs(BAGS) do
         for slot = 1, C_Container.GetContainerNumSlots(bag) do
@@ -925,6 +934,7 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
         -- The quest ID comes alone, or after the log index on older clients.
         local questID = arg2 or arg1
         if offeredAt and GetTime() - offeredAt <= OFFER_LIFE and type(questID) == "number" then
+            if #accepted == 0 then acceptedAt = GetTime() end
             accepted[#accepted + 1] = questID
             -- The item can land a moment after the accept.
             C_Timer.After(0.5, TieGiven)
