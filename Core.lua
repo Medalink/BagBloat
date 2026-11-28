@@ -966,6 +966,7 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
         ns.FollowBags()
     elseif event == "PLAYER_REGEN_ENABLED" then
         TieGiven()
+        ns.FollowBags()
         if bagsDirty or questsDirty then ns.MarkDirty() else ns.RefreshWindow() end
         BagsFullLine()
         return
@@ -977,8 +978,8 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
             TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, OnItemTooltip)
         end
         GameTooltip:HookScript("OnHide", function() tipOwner = nil end)
-        ns.RegisterOptions()
         ns.HookBags()
+        ns.RegisterOptions()
         return
     end
     ns.MarkDirty(QUEST_EVENTS[event])

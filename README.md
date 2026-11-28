@@ -85,7 +85,8 @@ opens it.
 | Chat line for banked items | On | The line about quest items in your bank when you enter their zone. |
 | Chat line when bags fill up | On | The line about items that are safe to delete when your bags fill up. |
 
-The window does not open by itself in combat. If you close a window that opened
+The window does not open by itself in combat; it opens when combat ends if the
+bank or bags are still open. If you close a window that opened
 by itself, it stays closed until you next open the bank or your bags. A window
 you opened yourself is never closed for you.
 

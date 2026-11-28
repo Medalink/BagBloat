@@ -869,14 +869,18 @@ end
 --- Opens the window when the bank or the bags open, as the options say, and
 --- closes it again when they close. It acts only when that state changes, so a
 --- window you closed stays closed, and it never closes one you opened yourself.
+--- An opening that combat held up is left pending, for the next call to make.
 function ns.FollowBags()
     local want = (ns.Option("openWithBank") and ns.bankOpen)
         or (ns.Option("openWithBags") and ns.BagFramesShown()) or false
     if want == following then return end
-    following = want
     if not want then
+        following = false
         if autoOpened then frame:Hide() end
-    elseif not ns.IsWindowShown() and not InCombatLockdown() then
+    elseif ns.IsWindowShown() then
+        following = true
+    elseif not InCombatLockdown() then
+        following = true
         if not frame then CreateWindow() end
         frame:Show()
         autoOpened = true

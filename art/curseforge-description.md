@@ -61,7 +61,7 @@ Bag Bloat has a page in the game's settings, under AddOns. `/bloat options` open
 - **Group by zone.** The same switch as the By zone box in the window.
 - **Chat line for banked items** and **Chat line when bags fill up.** Turn either chat line off.
 
-The window does not open by itself in combat. If you close a window that opened by itself, it stays closed until you next open the bank or your bags. A window you opened yourself is never closed for you.
+The window does not open by itself in combat; it opens when combat ends if the bank or bags are still open. If you close a window that opened by itself, it stays closed until you next open the bank or your bags. A window you opened yourself is never closed for you.
 
 ## Why an item has its label
 

@@ -48,6 +48,7 @@ end
 
 local function OnChanged()
     ns.RefreshWindow()
+    ns.FollowBags()
 end
 
 --- Adds the Bag Bloat page to the game's AddOns settings. Runs once saved variables are loaded.
