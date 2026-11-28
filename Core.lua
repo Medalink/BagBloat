@@ -862,7 +862,7 @@ local announced = {}
 
 -- Quest items for the zone you are in that sit in the bank, live or remembered.
 local function ZoneLine()
-    if InCombatLockdown() then return end
+    if InCombatLockdown() or not ns.Option("zoneLine") then return end
     local zone = GetRealZoneText()
     if not zone or zone == "" then zone = GetZoneText() end
     if not zone or zone == "" or announced[zone] then return end
@@ -905,6 +905,7 @@ local function BagsFullLine()
     if free > 0 or not was or was == 0 then return end
     local now = GetTime()
     if lastFullLine and now - lastFullLine < BAGS_FULL_GAP then return end
+    if not ns.Option("fullLine") then return end
     Fresh()
     local count = ns.safeBagCount
     if count == 0 then return end
@@ -962,6 +963,7 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
             bankOpenedAt = GetTime()
             C_Timer.After(BANK_SETTLE + 0.1, ScanBank)
         end
+        ns.FollowBags()
     elseif event == "PLAYER_REGEN_ENABLED" then
         TieGiven()
         if bagsDirty or questsDirty then ns.MarkDirty() else ns.RefreshWindow() end
@@ -975,6 +977,7 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
             TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, OnItemTooltip)
         end
         GameTooltip:HookScript("OnHide", function() tipOwner = nil end)
+        ns.RegisterOptions()
         ns.HookBags()
         return
     end
@@ -1092,6 +1095,8 @@ SlashCmdList.BAGBLOAT = function(msg)
         PrintStats()
     elseif word == "why" then
         ns.Why(rest)
+    elseif word == "options" or word == "settings" then
+        ns.OpenOptions()
     else
         ns.ToggleWindow()
     end

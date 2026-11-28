@@ -72,6 +72,23 @@ Bloat prints one chat line saying how many, at most every two minutes.
 
 Keep and hide choices are saved per character.
 
+## Settings
+
+Bag Bloat has a page in the game's settings, under AddOns. `/bloat options`
+opens it.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Open with the bank | On | Opens the window when you open your bank and closes it when you leave. |
+| Open with your bags | Off | Opens the window when you open your bags and closes it with them. Works with the game's bags and EllesmereUI Bags. |
+| Group by zone | On | The same switch as the By zone box in the window. |
+| Chat line for banked items | On | The line about quest items in your bank when you enter their zone. |
+| Chat line when bags fill up | On | The line about items that are safe to delete when your bags fill up. |
+
+The window does not open by itself in combat. If you close a window that opened
+by itself, it stays closed until you next open the bank or your bags. A window
+you opened yourself is never closed for you.
+
 ## Why an item has its label
 
 `/bloat why` opens a box with what the game reports for one item and how each

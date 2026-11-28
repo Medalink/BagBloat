@@ -13,6 +13,7 @@
 
 QuestZones.lua
 Core.lua
+Options.lua
 Marks.lua
 Skin.lua
 Window.lua

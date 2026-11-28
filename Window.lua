@@ -26,8 +26,11 @@ local function Clamp(v, lo, hi)
     return max(lo, min(hi, v))
 end
 
+local zoneCheck, SyncZoneCheck
+local following, autoOpened = false, false
+
 local function ByZone()
-    return not (BagBloatDB and BagBloatDB.byZone == false)
+    return ns.Option("byZone")
 end
 
 local function SavePosition()
@@ -498,6 +501,7 @@ end
 
 function ns.RefreshWindow()
     if not ns.IsWindowShown() then return end
+    SyncZoneCheck()
     local records = ns.Get()
     local y, rowN, headN = 0, 0, 0
     if ByZone() then
@@ -580,10 +584,17 @@ local function CheckOnLeave(check)
 end
 
 local function OnZoneToggle(check)
-    BagBloatDB = BagBloatDB or {}
-    BagBloatDB.byZone = check:GetChecked() and true or false
+    ns.SetOption("byZone", check:GetChecked() and true or false)
     PaintCheck(check)
     ns.RefreshWindow()
+end
+
+function SyncZoneCheck()
+    local on = ByZone()
+    if zoneCheck:GetChecked() ~= on then
+        zoneCheck:SetChecked(on)
+        PaintCheck(zoneCheck)
+    end
 end
 
 local function CreateCheck(close)
@@ -608,7 +619,7 @@ local function CreateCheck(close)
     check:SetScript("OnLeave", CheckOnLeave)
     check:SetScript("OnHide", CheckOnLeave)
     check:SetScript("OnClick", OnZoneToggle)
-    return check
+    zoneCheck = check
 end
 
 local function PaintGrip(grip)
@@ -759,6 +770,7 @@ local function CreateSearch()
 end
 
 local function OnWindowHide()
+    if not frame:IsShown() then autoOpened = false end
     Disarm()
     search:SetText("")
     search:ClearFocus()
@@ -852,4 +864,21 @@ end
 function ns.ToggleWindow()
     if not frame then CreateWindow() end
     frame:SetShown(not frame:IsShown())
+end
+
+--- Opens the window when the bank or the bags open, as the options say, and
+--- closes it again when they close. It acts only when that state changes, so a
+--- window you closed stays closed, and it never closes one you opened yourself.
+function ns.FollowBags()
+    local want = (ns.Option("openWithBank") and ns.bankOpen)
+        or (ns.Option("openWithBags") and ns.BagFramesShown()) or false
+    if want == following then return end
+    following = want
+    if not want then
+        if autoOpened then frame:Hide() end
+    elseif not ns.IsWindowShown() and not InCombatLockdown() then
+        if not frame then CreateWindow() end
+        frame:Show()
+        autoOpened = true
+    end
 end

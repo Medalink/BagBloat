@@ -68,14 +68,27 @@ end
 
 local gameFrames = {}
 
-function ns.BagsOpen()
+--- Whether a bag window is showing: the game's, or EllesmereUI Bags.
+function ns.BagFramesShown()
     local eui = _G.EUI_Bags
     if eui and eui.RegisterItemOverlayIcon and eui:IsVisible() then return true end
-    if ns.bankOpen then return true end
     for i = 1, #gameFrames do
         if gameFrames[i]:IsShown() then return true end
     end
     return false
+end
+
+function ns.BagsOpen()
+    return ns.bankOpen or ns.BagFramesShown()
+end
+
+local function OnBagFrameToggled()
+    ns.FollowBags()
+end
+
+local function WatchBagFrame(frame)
+    frame:HookScript("OnShow", OnBagFrameToggled)
+    frame:HookScript("OnHide", OnBagFrameToggled)
 end
 
 -- EllesmereUI Bags: its overlay API hands us every painted slot.
@@ -121,6 +134,7 @@ function ns.HookBags()
             seen[frame] = true
             gameFrames[#gameFrames + 1] = frame
             hooksecurefunc(frame, "UpdateItems", PaintGameFrame)
+            WatchBagFrame(frame)
         end
     end
     add(ContainerFrameCombinedBags)
@@ -133,5 +147,6 @@ function ns.HookBags()
     local eui = _G.EUI_Bags
     if eui and eui.RegisterItemOverlayIcon then
         eui.RegisterItemOverlayIcon("BagBloat", PaintEllesmere)
+        if eui.HookScript then WatchBagFrame(eui) end
     end
 end
